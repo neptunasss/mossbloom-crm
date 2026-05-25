@@ -121,9 +121,10 @@ function renderOrders(orders) {
       ? `<span class="customer-link" data-email="${esc(o.customer_email)}">${esc(o.customer_name || '—')}</span>`
       : esc(o.customer_name || '—');
 
+    const ps = o.producer_status || '';
     const prodBadge = prod
-      ? `<span class="prod-badge" style="background:${prod.bg};color:${prod.text}">${prod.icon} ${o.producer_status}</span>`
-      : '<span class="prod-none">—</span>';
+      ? `<span class="prod-badge" style="background:${prod.bg};color:${prod.text};cursor:pointer" title="Keisti statusą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'${ps}')">${prod.icon} ${ps}</span>`
+      : `<span class="prod-none" style="cursor:pointer" title="Pradėti gamybą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'')">—</span>`;
 
     return `<tr>
       <td style="border-left:3px solid ${store.color};padding-left:11px">
@@ -421,6 +422,21 @@ function timeAgo(str) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Production status ─────────────────────────────────────────────────────────
+
+async function cycleProducerStatus(storeId, orderId, current) {
+  const next = { '': 'started', started: 'ready', ready: '' }[current] ?? 'started';
+  try {
+    await api(`/api/orders/${encodeURIComponent(storeId)}/${orderId}/producer-status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: next }),
+    });
+    await loadOrders();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
 }
 
 // ── File Modal ────────────────────────────────────────────────────────────────

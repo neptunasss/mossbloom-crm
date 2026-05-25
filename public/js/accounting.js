@@ -154,12 +154,16 @@ function renderEntries(entries) {
 
 // ── P&L chart ─────────────────────────────────────────────────────────────────
 
+const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
+
 function renderChart(months, currency) {
   if (!months || !window.Chart) return;
 
-  const labels   = months.map(m => {
-    const d = new Date(m.month + '-01');
-    return d.toLocaleDateString('lt-LT', { month: 'short', year: '2-digit' });
+  // Parse YYYY-MM directly — avoids UTC offset shifting the month and
+  // avoids toLocaleDateString('lt-LT', {year:'2-digit'}) rendering as "26-05"
+  const labels = months.map(m => {
+    const [yr, mo] = m.month.split('-');
+    return `${CHART_MONTHS[Number(mo) - 1]} '${yr.slice(2)}`;
   });
   const income   = months.map(m => (m.income[currency]   || 0));
   const expenses = months.map(m => (m.expenses[currency] || 0));

@@ -129,6 +129,17 @@ router.post('/sync', requireAuth, async (req, res) => {
   res.json({ results });
 });
 
+// Update production status from the UI
+router.patch('/:storeId/:orderId/producer-status', requireAuth, (req, res) => {
+  const { storeId, orderId } = req.params;
+  const { status } = req.body;
+  const allowed = ['', 'started', 'ready'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  db.prepare('UPDATE orders_cache SET producer_status = ? WHERE store_id = ? AND order_id = ?')
+    .run(status || null, storeId, parseInt(orderId));
+  res.json({ ok: true });
+});
+
 // Last sync info per store
 router.get('/sync-status', requireAuth, (req, res) => {
   const statuses = stores.map(store => {

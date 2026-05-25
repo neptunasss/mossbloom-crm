@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const STORE_EMOJI = { bloom_lt: '🇱🇹', mossbloom_dk: '🇩🇰', mossbloom_de: '🇩🇪' };
+const STORE_EMOJI = { bloom_lt: '🟢', mossbloom_dk: '🔵', mossbloom_de: '🔴' };
 const STORE_NAME  = { bloom_lt: 'bloom.lt', mossbloom_dk: 'mossbloom.dk', mossbloom_de: 'mossbloom.de' };
 
 const LT_MONTHS = [
