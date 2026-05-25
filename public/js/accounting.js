@@ -8,27 +8,26 @@ const ACCT_STORE = {
 };
 
 const SOURCE_BADGE = {
-  woocommerce:    '<span class="acct-badge acct-badge-wc">WC</span>',
-  sandoriai:      '<span class="acct-badge acct-badge-sa">S</span>',
-  b2b_import:     '<span class="acct-badge acct-badge-b2b">B2B</span>',
-  b2b:            '<span class="acct-badge acct-badge-b2b">B2B</span>',
-  google_sheets:  '<span class="acct-badge acct-badge-gs">GS</span>',
-  manual:         '',
+  woocommerce: '<span class="acct-badge acct-badge-wc">WC</span>',
+  b2b_import:  '<span class="acct-badge acct-badge-b2b">B2B</span>',
+  b2b:         '<span class="acct-badge acct-badge-b2b">B2B</span>',
 };
 
 const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
 
 const STAT_CARDS = [
-  { key: 'income',       label: 'Pajamos',            cls: 'income',  fmt: 'eur' },
-  { key: 'expenses',     label: 'Išlaidos',           cls: 'expense', fmt: 'eur' },
-  { key: 'profit',       label: 'Pelnas',             cls: 'profit',  fmt: 'eur', signed: true },
-  { key: 'profitMargin', label: 'Pelno marža',        cls: 'neutral', fmt: 'pct' },
-  { key: 'orderCount',   label: 'Užsakymų skaičius',  cls: 'neutral', fmt: 'int' },
-  { key: 'avgOrder',     label: 'Vidutinis užsakymas', cls: 'neutral', fmt: 'eur' },
+  { key: 'income',       label: 'Pajamos',             cls: 'income',  fmt: 'eur' },
+  { key: 'expenses',     label: 'Išlaidos',            cls: 'expense', fmt: 'eur' },
+  { key: 'profit',       label: 'Pelnas',              cls: 'profit',  fmt: 'eur', signed: true },
+  { key: 'profitMargin', label: 'Pelno marža',         cls: 'neutral', fmt: 'pct' },
+  { key: 'orderCount',   label: 'Užsakymų skaičius',   cls: 'neutral', fmt: 'int' },
+  { key: 'avgOrder',     label: 'Vidutinis užsakymas',  cls: 'neutral', fmt: 'eur' },
+  { key: 'roi',          label: 'ROI',                 cls: 'neutral', fmt: 'pct', isRoi: true },
 ];
 
-let acctChart      = null;
-let acctChartData  = null;
+let acctChart         = null;
+let acctExpensesChart = null;
+let acctChartData     = null;
 let acctChartMode  = 'eur';
 let acctEntries    = [];
 let acctSort       = { col: 'entry_date', dir: -1 };
@@ -84,6 +83,7 @@ async function loadAccounting(silent = false) {
     renderRatesNote(data.rate);
     renderStats(data.stats);
     renderChart(acctChartData);
+    renderExpensesChart(data.expensesByCategory);
     renderStoreBreakdown(data.stores, data.period);
     renderEntries(acctEntries);
 
@@ -154,26 +154,33 @@ const SPARK_COLORS = {
 
 function renderStats(stats) {
   const grid = document.getElementById('acct-stats-grid');
-  grid.innerHTML = STAT_CARDS.map(card => {
-    const s   = stats[card.key] || { value: 0, changePct: 0, sparkline: [] };
-    let col = card.cls === 'neutral' ? 'neutral' : card.cls;
-    if (card.signed) col = (s.value >= 0 ? 'income' : 'expense');
-    const sparkColor = SPARK_COLORS.neutral;
-    const isZeroExpenses = card.key === 'expenses' && (s.value == null || s.value === 0);
-    const expenseHint = isZeroExpenses
-      ? '<div class="acct-stat-hint">Pridėkite išlaidas rankiniu būdu</div>'
-      : '';
-    return `
-      <div class="acct-stat-card acct-stat-${col}${isZeroExpenses ? ' acct-stat-empty' : ''}">
-        <div class="acct-stat-top">
-          <span class="acct-stat-label">${card.label}</span>
-          ${sparklineSvg(s.sparkline, sparkColor)}
-        </div>
-        <div class="acct-stat-value">${fmtStatValue(s.value, card.fmt)}</div>
-        ${expenseHint}
-        ${renderChange(s.changePct, card.cls)}
-      </div>`;
+
+  const cardsHtml = STAT_CARDS.map(card => {
+    const s = stats[card.key] || { value: 0, changePct: 0 };
+    let col = card.cls;
+    if (card.key === 'profit') col = (s.value >= 0 ? 'income' : 'expense');
+    if (card.isRoi) {
+      const v = s.value;
+      col = v == null ? 'neutral' : v > 15 ? 'income' : v > 0 ? 'roi-ok' : 'expense';
+    }
+    const isZeroExpenses = card.key === 'expenses' && !s.value;
+    const val = s.value == null ? '—' : fmtStatValue(s.value, card.fmt);
+    return `<div class="acct-stat-card acct-stat-${col}${isZeroExpenses ? ' acct-stat-empty' : ''}">
+      <span class="acct-stat-label">${card.label}</span>
+      <div class="acct-stat-value">${val}</div>
+      ${renderChange(s.changePct, card.key === 'expenses' ? 'expense' : col)}
+    </div>`;
   }).join('');
+
+  const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0 };
+  const pvmCard = `<div class="acct-stat-card acct-stat-pvm" title="PVM 21% nuo pajamų">
+    <span class="acct-stat-label">PVM mokėti</span>
+    <div class="acct-stat-value">${fmtEUR(pvm.moketi)}</div>
+    <div class="acct-pvm-detail">Surinktinas: ${fmtEUR(pvm.surinktinas)}</div>
+    <div class="acct-pvm-detail">Sumokėtas: ${fmtEUR(pvm.sumoketas)}</div>
+  </div>`;
+
+  grid.innerHTML = cardsHtml + pvmCard;
 }
 
 function renderRatesNote(rate) {
@@ -279,6 +286,74 @@ function chartOptions(tickColor, stacked) {
   };
 }
 
+// ── Expenses breakdown chart ──────────────────────────────────────────────────
+
+function renderExpensesChart(expData) {
+  const panel = document.getElementById('acct-expenses-panel');
+  if (!expData || !window.Chart) { if (panel) panel.hidden = true; return; }
+
+  const ctx = document.getElementById('acct-expenses-chart')?.getContext('2d');
+  if (!ctx) return;
+  if (acctExpensesChart) acctExpensesChart.destroy();
+
+  const CAT_ORDER = ['Žaliavos', 'Darbo užmokestis', 'Reklama', 'Mokesčiai', 'Paslaugos', 'Siuntimas', 'Kitos išlaidos', 'Kita'];
+  const byCategory = expData.byCategory || {};
+  const total = expData.total || 1;
+
+  const labels = CAT_ORDER.filter(c => (byCategory[c] || 0) > 0);
+  if (!labels.length) { if (panel) panel.hidden = true; return; }
+  if (panel) panel.hidden = false;
+
+  const data = labels.map(c => byCategory[c] || 0);
+
+  acctExpensesChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: 'rgba(239,68,68,0.55)',
+        borderRadius: 4,
+        barThickness: 22,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1d27',
+          borderColor: '#2d3348',
+          borderWidth: 1,
+          titleColor: '#e5e7eb',
+          bodyColor: '#9ca3af',
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.x || 0;
+              const pct = ((v / total) * 100).toFixed(1);
+              return ` €${v.toLocaleString('lt-LT', { minimumFractionDigits: 2 })} · ${pct}%`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: '#6b7280', font: { size: 11 }, callback: v => `€${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}` },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#9ca3af', font: { size: 12 } },
+        },
+      },
+    },
+  });
+}
+
 // ── Store breakdown ───────────────────────────────────────────────────────────
 
 function renderStoreBreakdown(stores) {
@@ -346,9 +421,9 @@ function renderEntries(entries) {
       <td class="acct-tx-date">${fmtDate(e.entry_date)}</td>
       <td>
         <div class="acct-tx-desc">${esc(e.description)}${srcBadge}</div>
+        <div class="acct-tx-cat">${esc(e.category || 'Kita')}</div>
         ${notesHtml}
       </td>
-      <td><span class="acct-cat">${esc(e.category || 'Kita')}</span></td>
       <td>${storeBadge(e)}</td>
       <td class="num ${amtCls}">${amtPfx}${fmtEUR(e.amountEUR)}</td>
       <td class="acct-tx-actions">

@@ -231,6 +231,19 @@ function storeOrderCount(entries, storeId) {
   return entries.filter(e => e.type === 'income' && e.source === 'woocommerce' && e.store_id === storeId).length;
 }
 
+function expensesByCategory(entries, rate) {
+  const byCategory = {};
+  let total = 0;
+  for (const e of entries) {
+    if (e.type !== 'expense') continue;
+    const eur = fx.toEur(e.amount, e.currency, rate);
+    const cat = e.category || 'Kita';
+    byCategory[cat] = (byCategory[cat] || 0) + eur;
+    total += eur;
+  }
+  return { byCategory, total };
+}
+
 function aggregateEntries(db, entries, from, to, rate) {
   let expensesEUR = 0;
   let incomeEUR   = 0;
@@ -388,13 +401,23 @@ async function buildDashboard(db, query) {
   const curAgg  = aggregateEntries(db, currentAll, period.from, period.to, rate);
   const prevAgg = aggregateEntries(db, prevAll, prev.from, prev.to, rate);
 
+  const roiValue   = curAgg.expensesEUR  > 0 ? (curAgg.profitEUR  / curAgg.expensesEUR)  * 100 : null;
+  const prevRoiVal = prevAgg.expensesEUR > 0 ? (prevAgg.profitEUR / prevAgg.expensesEUR) * 100 : null;
+
+  const pvmSurinktinas = curAgg.incomeEUR * 21 / 121;
+  const pvmSumoketas   = currentAll
+    .filter(e => e.category === 'Mokesčiai' && (e.description || '').toUpperCase().includes('PVM'))
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+
   const stats = {
-    income:       statBlock(curAgg.incomeEUR,       prevAgg.incomeEUR,       monthlySparkline(db, 'income',   period.from, period.to, rate)),
-    expenses:     statBlock(curAgg.expensesEUR,     prevAgg.expensesEUR,     monthlySparkline(db, 'expenses', period.from, period.to, rate)),
-    profit:       statBlock(curAgg.profitEUR,       prevAgg.profitEUR,       monthlySparkline(db, 'profit',   period.from, period.to, rate)),
-    profitMargin: statBlock(curAgg.profitMarginPct, prevAgg.profitMarginPct, monthlySparkline(db, 'margin',   period.from, period.to, rate)),
-    orderCount:   statBlock(curAgg.orderCount,       prevAgg.orderCount,       monthlySparkline(db, 'orders',   period.from, period.to, rate)),
-    avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     monthlySparkline(db, 'avg',      period.from, period.to, rate)),
+    income:       statBlock(curAgg.incomeEUR,       prevAgg.incomeEUR,       []),
+    expenses:     statBlock(curAgg.expensesEUR,     prevAgg.expensesEUR,     []),
+    profit:       statBlock(curAgg.profitEUR,       prevAgg.profitEUR,       []),
+    profitMargin: statBlock(curAgg.profitMarginPct, prevAgg.profitMarginPct, []),
+    orderCount:   statBlock(curAgg.orderCount,      prevAgg.orderCount,      []),
+    avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     []),
+    roi:          statBlock(roiValue, prevRoiVal, []),
+    pvm:          { surinktinas: pvmSurinktinas, sumoketas: pvmSumoketas, moketi: pvmSurinktinas - pvmSumoketas },
   };
 
   // WooCommerce orders from orders_cache — only those not already in accounting_entries
@@ -456,6 +479,7 @@ async function buildDashboard(db, query) {
     stats,
     chart: { months: buildChartMonths(db, rate) },
     stores: buildStoreBreakdown(db, currentAll, prevAll, rate, period, prev),
+    expensesByCategory: expensesByCategory(currentAll, rate),
     entries,
     total: entries.length,
   };

@@ -121,6 +121,14 @@ try {
 } catch {}
 // Back-fill category for auto-synced entries
 try { db.exec("UPDATE accounting_entries SET category='Pardavimai' WHERE source IN ('woocommerce','sandoriai') AND (category IS NULL OR category='Kita')"); } catch {}
+// Normalize expense categories from Google Sheets
+try { db.exec("UPDATE accounting_entries SET category='Žaliavos' WHERE type='expense' AND (description LIKE '%RĖMAI%' OR description LIKE '%REMAI%' OR description LIKE '%SAMANOS%')"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Darbo užmokestis' WHERE type='expense' AND description LIKE '%ALGA%'"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Mokesčiai' WHERE type='expense' AND (description LIKE '%PVM%' OR description LIKE '%SODRA%' OR description LIKE '%VMI%')"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Reklama' WHERE type='expense' AND (description LIKE '%GOOGLE ADS%' OR description LIKE '%FACEBOOK ADS%')"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Siuntimas' WHERE type='expense' AND description LIKE '%SIUNTIMO%'"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Paslaugos' WHERE type='expense' AND description LIKE '%B2B PASLAUGOS%'"); } catch {}
+try { db.exec("UPDATE accounting_entries SET category='Kitos išlaidos' WHERE type='expense' AND (description LIKE '%KITOS PREKE%' OR description LIKE '%KITOS IŠLAIDOS%' OR description LIKE '%KITOS ISLAIDOS%')"); } catch {}
 
 // Migrate old deal statuses → pipeline statuses
 db.exec(`

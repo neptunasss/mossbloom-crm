@@ -328,6 +328,16 @@
           </div>
         </div>
 
+        <div class="acct-panel acct-chart-panel" id="acct-expenses-panel" hidden>
+          <div class="acct-panel-head">
+            <h3 class="acct-panel-title">Išlaidų struktūra</h3>
+            <span class="acct-panel-sub">Pagal kategorijas</span>
+          </div>
+          <div class="acct-expense-chart-wrap">
+            <canvas id="acct-expenses-chart"></canvas>
+          </div>
+        </div>
+
         <div class="acct-panel acct-stores-panel">
           <div class="acct-panel-head">
             <h3 class="acct-panel-title">Parduotuvių suvestinė</h3>
@@ -364,10 +374,14 @@
               <option value="">Visos kategorijos</option>
               <option>Pardavimai</option>
               <option>Žaliavos</option>
-              <option>Nuoma</option>
-              <option>Reklama</option>
-              <option>Transportas</option>
               <option>Darbo užmokestis</option>
+              <option>Reklama</option>
+              <option>Mokesčiai</option>
+              <option>Siuntimas</option>
+              <option>Paslaugos</option>
+              <option>Kitos išlaidos</option>
+              <option>Nuoma</option>
+              <option>Transportas</option>
               <option>Komisiniai</option>
               <option>Kita</option>
             </select>
@@ -385,7 +399,6 @@
                 <tr>
                   <th class="sortable" data-sort="entry_date">Data</th>
                   <th class="sortable" data-sort="description">Aprašymas</th>
-                  <th class="sortable" data-sort="category">Kategorija</th>
                   <th class="sortable" data-sort="store">Parduotuvė</th>
                   <th class="sortable num" data-sort="amountEUR">Suma (EUR)</th>
                   <th></th>
@@ -704,10 +717,14 @@
             <select name="category">
               <option value="Pardavimai">Pardavimai</option>
               <option value="Žaliavos">Žaliavos</option>
-              <option value="Nuoma">Nuoma</option>
-              <option value="Reklama">Reklama</option>
-              <option value="Transportas">Transportas</option>
               <option value="Darbo užmokestis">Darbo užmokestis</option>
+              <option value="Reklama">Reklama</option>
+              <option value="Mokesčiai">Mokesčiai</option>
+              <option value="Siuntimas">Siuntimas</option>
+              <option value="Paslaugos">Paslaugos</option>
+              <option value="Kitos išlaidos">Kitos išlaidos</option>
+              <option value="Nuoma">Nuoma</option>
+              <option value="Transportas">Transportas</option>
               <option value="Komisiniai">Komisiniai</option>
               <option value="Kita" selected>Kita</option>
             </select>

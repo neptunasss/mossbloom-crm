@@ -1521,6 +1521,11 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 .acct-stat-income .acct-stat-value  { color: #22c55e; }
 .acct-stat-expense .acct-stat-value { color: #ef4444; }
 .acct-stat-neutral .acct-stat-value { color: #e5e7eb; }
+.acct-stat-roi-ok .acct-stat-value  { color: #f59e0b; }
+.acct-stat-pvm { border-color: #92400e; }
+.acct-stat-pvm .acct-stat-label { color: #d97706; }
+.acct-stat-pvm .acct-stat-value { color: #fbbf24; }
+.acct-pvm-detail { font-size: 11px; color: #92400e; margin-top: 1px; }
 
 .acct-stat-change {
   font-size: 11px;
@@ -1684,6 +1689,18 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
   color: #6b7280;
   margin-top: 2px;
   font-style: italic;
+}
+
+.acct-tx-cat {
+  font-size: 11px;
+  color: #4b5563;
+  margin-top: 2px;
+}
+
+.acct-expense-chart-wrap {
+  position: relative;
+  height: 240px;
+  margin-top: 4px;
 }
 
 .acct-cat {
