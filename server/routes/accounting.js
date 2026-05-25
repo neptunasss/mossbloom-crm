@@ -223,4 +223,20 @@ router.delete('/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ── B2B import ─────────────────────────────────────────────────────────────────
+// POST /api/accounting/import-b2b
+// Safe to call multiple times — skips records that already exist.
+
+router.post('/import-b2b', requireAuth, (req, res) => {
+  try {
+    const { runImport } = require('../scripts/import-b2b');
+    const result = runImport(db);
+    console.log(`[import-b2b] inserted=${result.inserted} skipped=${result.skipped}`);
+    res.json(result);
+  } catch (err) {
+    console.error('[import-b2b] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
