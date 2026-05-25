@@ -397,7 +397,14 @@ async function buildDashboard(db, query) {
     avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     monthlySparkline(db, 'avg',      period.from, period.to, rate)),
   };
 
-  // WooCommerce orders for the period mapped to entry shape
+  // WooCommerce orders from orders_cache — only those not already in accounting_entries
+  const syncedIds = new Set(
+    db.prepare(`
+      SELECT reference_id FROM accounting_entries
+      WHERE source = 'woocommerce' AND entry_date >= ? AND entry_date <= ?
+    `).all(period.from, period.to).map(r => r.reference_id)
+  );
+
   const wcRows = db.prepare(`
     SELECT store_id, order_id, customer_name, total, currency, date_created, status
     FROM orders_cache
@@ -406,25 +413,27 @@ async function buildDashboard(db, query) {
     ORDER BY date_created DESC
   `).all(period.from, period.to);
 
-  const wcEntries = wcRows.map(o => {
-    const amount    = parseFloat(o.total) || 0;
-    const amountEUR = fx.toEur(amount, o.currency, rate);
-    return {
-      id:          `wc-${o.store_id}-${o.order_id}`,
-      type:        'income',
-      source:      'woocommerce',
-      store_id:    o.store_id,
-      reference_id: String(o.order_id),
-      description: `#${o.order_id} — ${o.customer_name || ''}`.trim().replace(/— $/, ''),
-      amount,
-      currency:    o.currency,
-      entry_date:  o.date_created.slice(0, 10),
-      category:    'Pardavimai',
-      notes:       o.status,
-      amountEUR,
-      storeKey:    o.store_id,
-    };
-  });
+  const wcEntries = wcRows
+    .filter(o => !syncedIds.has(String(o.order_id)))
+    .map(o => {
+      const amount    = parseFloat(o.total) || 0;
+      const amountEUR = fx.toEur(amount, o.currency, rate);
+      return {
+        id:           `wc-${o.store_id}-${o.order_id}`,
+        type:         'income',
+        source:       'woocommerce',
+        store_id:     o.store_id,
+        reference_id: String(o.order_id),
+        description:  `#${o.order_id} — ${o.customer_name || ''}`.trimEnd().replace(/ —$/, ''),
+        amount,
+        currency:     o.currency,
+        entry_date:   o.date_created.slice(0, 10),
+        category:     'Pardavimai',
+        notes:        o.status,
+        amountEUR,
+        storeKey:     o.store_id,
+      };
+    });
 
   let entries = [
     ...wcEntries,
