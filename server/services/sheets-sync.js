@@ -111,12 +111,16 @@ function mapCategory(tipas, entryType) {
   return entryType === 'income' ? 'Pardavimai' : 'Kita';
 }
 
-function mapStoreId(tipas) {
+function mapStoreId(tipas, entryType) {
   const t = String(tipas || '').toLowerCase();
-  if (t.includes('b2b')) return 'bloom_lt';
-  if (t.includes('dk') || t.includes('danija')) return 'mossbloom_dk';
-  if (t.includes('de') || t.includes('vokiet')) return 'mossbloom_de';
-  if (t.includes('lt') || t.includes('bloom')) return 'bloom_lt';
+  if (entryType === 'income') {
+    if (t.includes('b2b order') || (t.includes('b2b') && !t.includes('pardavimas'))) return '';
+    if (t.includes('mossbloom.dk') || t.includes('mossbloom_dk')) return 'mossbloom_dk';
+    if (t.includes('mossbloom.de') || t.includes('mossbloom_de')) return 'mossbloom_de';
+    if (t.includes('bloom.lt') || t.includes('bloom_lt') || t.includes('resellas') || t.includes('promiless')) {
+      return 'bloom_lt';
+    }
+  }
   return '';
 }
 
@@ -279,7 +283,7 @@ function processRows(rows, entryType, sheetKey, logPrefix) {
     }
 
     const category = mapCategory(tipas, entryType);
-    const storeId  = entryType === 'income' ? mapStoreId(tipas) : '';
+    const storeId  = entryType === 'income' ? mapStoreId(tipas, entryType) : '';
     const ref      = referenceId(sheetKey, entryType, entryDate, amount, tipas);
 
     if (existsStmt.get(ref)) {

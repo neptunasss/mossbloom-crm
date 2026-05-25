@@ -1,10 +1,10 @@
 'use strict';
 
 const ACCT_STORE = {
-  bloom_lt:     { name: 'bloom.lt',     color: '#22c55e' },
-  mossbloom_dk: { name: 'mossbloom.dk', color: '#3b82f6' },
-  mossbloom_de: { name: 'mossbloom.de', color: '#ef4444' },
-  b2b:          { name: 'B2B',          color: '#a855f7' },
+  bloom_lt:     { name: 'bloom.lt' },
+  mossbloom_dk: { name: 'mossbloom.dk' },
+  mossbloom_de: { name: 'mossbloom.de' },
+  b2b:          { name: 'B2B' },
 };
 
 const SOURCE_BADGE = {
@@ -20,7 +20,7 @@ const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa
 const STAT_CARDS = [
   { key: 'income',       label: 'Pajamos',            cls: 'income',  fmt: 'eur' },
   { key: 'expenses',     label: 'Išlaidos',           cls: 'expense', fmt: 'eur' },
-  { key: 'profit',       label: 'Pelnas',             cls: 'profit',  fmt: 'eur' },
+  { key: 'profit',       label: 'Pelnas',             cls: 'profit',  fmt: 'eur', signed: true },
   { key: 'profitMargin', label: 'Pelno marža',        cls: 'neutral', fmt: 'pct' },
   { key: 'orderCount',   label: 'Užsakymų skaičius',  cls: 'neutral', fmt: 'int' },
   { key: 'avgOrder',     label: 'Vidutinis užsakymas', cls: 'neutral', fmt: 'eur' },
@@ -148,16 +148,16 @@ function sparklineSvg(values, color) {
 }
 
 const SPARK_COLORS = {
-  income: '#22c55e', expense: '#ef4444', profit: '#3b82f6',
-  neutral: '#60a5fa',
+  income: '#4b5563', expense: '#4b5563', profit: '#4b5563', neutral: '#4b5563',
 };
 
 function renderStats(stats) {
   const grid = document.getElementById('acct-stats-grid');
   grid.innerHTML = STAT_CARDS.map(card => {
     const s   = stats[card.key] || { value: 0, changePct: 0, sparkline: [] };
-    const col = card.cls === 'neutral' ? 'neutral' : card.cls;
-    const sparkColor = SPARK_COLORS[col] || SPARK_COLORS.neutral;
+    let col = card.cls === 'neutral' ? 'neutral' : card.cls;
+    if (card.signed) col = (s.value >= 0 ? 'income' : 'expense');
+    const sparkColor = SPARK_COLORS.neutral;
     const isZeroExpenses = card.key === 'expenses' && (s.value == null || s.value === 0);
     const expenseHint = isZeroExpenses
       ? '<div class="acct-stat-hint">Pridėkite išlaidas rankiniu būdu</div>'
@@ -201,7 +201,6 @@ function renderChart(months) {
   if (!ctx) return;
   if (acctChart) acctChart.destroy();
 
-  const gridColor = 'rgba(255,255,255,0.06)';
   const tickColor = '#6b7280';
 
   if (acctChartMode === 'stores') {
@@ -210,13 +209,13 @@ function renderChart(months) {
       data: {
         labels,
         datasets: [
-          { label: 'bloom.lt',     data: months.map(m => m.stores?.bloom_lt || 0),     backgroundColor: 'rgba(34,197,94,0.75)',  borderRadius: 3, stack: 'income' },
-          { label: 'mossbloom.dk', data: months.map(m => m.stores?.mossbloom_dk || 0), backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 3, stack: 'income' },
-          { label: 'mossbloom.de', data: months.map(m => m.stores?.mossbloom_de || 0), backgroundColor: 'rgba(239,68,68,0.75)',  borderRadius: 3, stack: 'income' },
-          { label: 'B2B',          data: months.map(m => m.stores?.b2b || 0),          backgroundColor: 'rgba(168,85,247,0.75)', borderRadius: 3, stack: 'income' },
+          { label: 'bloom.lt',     data: months.map(m => m.stores?.bloom_lt || 0),     backgroundColor: 'rgba(34,197,94,0.9)',  borderRadius: 4, stack: 'income' },
+          { label: 'mossbloom.dk', data: months.map(m => m.stores?.mossbloom_dk || 0), backgroundColor: 'rgba(34,197,94,0.55)', borderRadius: 4, stack: 'income' },
+          { label: 'mossbloom.de', data: months.map(m => m.stores?.mossbloom_de || 0), backgroundColor: 'rgba(34,197,94,0.35)', borderRadius: 4, stack: 'income' },
+          { label: 'B2B',          data: months.map(m => m.stores?.b2b || 0),          backgroundColor: 'rgba(34,197,94,0.2)',  borderRadius: 4, stack: 'income' },
         ],
       },
-      options: chartOptions(gridColor, tickColor, true),
+      options: chartOptions(tickColor, true),
     });
     return;
   }
@@ -233,11 +232,11 @@ function renderChart(months) {
         { label: 'Išlaidos', data: expenses, backgroundColor: 'rgba(239,68,68,0.8)', borderRadius: 4 },
       ],
     },
-    options: chartOptions(gridColor, tickColor, false),
+    options: chartOptions(tickColor, false),
   });
 }
 
-function chartOptions(gridColor, tickColor, stacked) {
+function chartOptions(tickColor, stacked) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -245,7 +244,7 @@ function chartOptions(gridColor, tickColor, stacked) {
     plugins: {
       legend: {
         position: 'top',
-        labels: { color: '#9ca3af', font: { size: 12 }, padding: 14, boxWidth: 12 },
+        labels: { color: '#9ca3af', font: { size: 11 }, padding: 20, boxWidth: 10 },
       },
       tooltip: {
         backgroundColor: '#1a1d27',
@@ -267,7 +266,8 @@ function chartOptions(gridColor, tickColor, stacked) {
       y: {
         stacked: !!stacked,
         beginAtZero: true,
-        grid: { color: gridColor },
+        grid: { display: false },
+        border: { display: false },
         ticks: {
           color: tickColor,
           font: { size: 11 },
@@ -286,9 +286,8 @@ function renderStoreBreakdown(stores) {
 
   tbody.innerHTML = stores.map(row => {
     const isTotal = row.id === 'total';
-    const storeColor = ACCT_STORE[row.id]?.color || '#9ca3af';
     return `<tr class="${isTotal ? 'acct-row-total' : ''}">
-      <td><span class="acct-store-dot" style="background:${storeColor}"></span>${esc(row.name)}</td>
+      <td>${esc(row.name)}</td>
       <td class="num">${row.orders}</td>
       <td class="num acct-val-income">${fmtEUR(row.incomeEUR)}</td>
       <td class="num">${row.pctOfTotal.toFixed(1)}%</td>
@@ -301,12 +300,12 @@ function renderStoreBreakdown(stores) {
 
 function storeBadge(entry) {
   const key = entry.storeKey || entry.store_id;
-  if (entry.source === 'b2b_import') {
-    return `<span class="acct-store-pill" style="background:#a855f71a;color:#c084fc;border-color:#a855f740">B2B</span>`;
+  if (entry.source === 'b2b_import' || (entry.source === 'google_sheets' && key === 'b2b')) {
+    return '<span class="acct-store-pill">B2B</span>';
   }
   const s = ACCT_STORE[key];
   if (!s) return '<span class="acct-muted">—</span>';
-  return `<span class="acct-store-pill" style="background:${s.color}18;color:${s.color};border-color:${s.color}40">${s.name}</span>`;
+  return `<span class="acct-store-pill">${s.name}</span>`;
 }
 
 function sortEntries(entries) {

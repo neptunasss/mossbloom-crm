@@ -4,7 +4,8 @@ const requireAuth = require('../middleware/auth');
 const db          = require('../database');
 const fx          = require('../services/fx');
 const stats       = require('../services/accounting-stats');
-const sheetsSync  = require('../services/sheets-sync');
+const sheetsSync       = require('../services/sheets-sync');
+const accountingSync   = require('../services/accounting-sync');
 
 const STORE_NAME = {
   bloom_lt:     'bloom.lt',
@@ -171,61 +172,11 @@ router.post('/sync-sheets', requireAuth, async (req, res) => {
 // POST /api/accounting/sync
 
 router.post('/sync', requireAuth, async (req, res) => {
-  const wc = { added: 0, skipped: 0 };
-  const sa = { added: 0, skipped: 0 };
-
   try {
-    // 1. WooCommerce completed / processing orders → income
-    const orders = db.prepare(`SELECT * FROM orders_cache WHERE status IN ('completed','processing')`).all();
-    console.log(`[acct-sync] found ${orders.length} WooCommerce orders to check`);
-
-    for (const o of orders) {
-      const exists = db.prepare(`
-        SELECT id FROM accounting_entries WHERE source='woocommerce' AND store_id=? AND reference_id=?
-      `).get(o.store_id, String(o.order_id));
-
-      if (exists) { wc.skipped++; continue; }
-
-      const entryDate = (o.date_created || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
-
-      db.prepare(`
-        INSERT INTO accounting_entries
-          (type, source, store_id, reference_id, description, amount, currency, entry_date, category)
-        VALUES ('income','woocommerce',?,?,?,?,?,'${entryDate}','Pardavimai')
-      `).run(
-        o.store_id,
-        String(o.order_id),
-        `#${o.order_id} — ${o.customer_name || 'Unknown'}`,
-        parseFloat(o.total) || 0,
-        o.currency || 'EUR',
-      );
-      wc.added++;
-    }
-
-    // 2. Won Sandoriai deals → income
-    const deals = db.prepare(`SELECT * FROM custom_deals WHERE status='won'`).all();
-    console.log(`[acct-sync] found ${deals.length} won deals to check`);
-
-    for (const d of deals) {
-      const exists = db.prepare(`
-        SELECT id FROM accounting_entries WHERE source='sandoriai' AND reference_id=?
-      `).get(String(d.id));
-
-      if (exists) { sa.skipped++; continue; }
-
-      const entryDate = d.deal_date || new Date().toISOString().slice(0, 10);
-      const desc = d.description ? `${d.customer_name} — ${d.description}` : d.customer_name;
-
-      db.prepare(`
-        INSERT INTO accounting_entries
-          (type, source, store_id, reference_id, description, amount, currency, entry_date, category)
-        VALUES ('income','sandoriai',?,?,?,?,?,'${entryDate}','Pardavimai')
-      `).run(d.store_id || 'custom', String(d.id), desc, parseFloat(d.amount) || 0, d.currency || 'EUR');
-      sa.added++;
-    }
-
+    const results = accountingSync.syncAccountingEntries();
+    const { woocommerce: wc, sandoriai: sa } = results;
     console.log(`[acct-sync] done — WC +${wc.added}/${wc.skipped} skipped, SA +${sa.added}/${sa.skipped} skipped`);
-    res.json({ results: { woocommerce: wc, sandoriai: sa } });
+    res.json({ results });
   } catch (err) {
     console.error('[acct-sync] error:', err.message, err.stack);
     res.status(500).json({ error: err.message });

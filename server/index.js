@@ -73,7 +73,8 @@ app.listen(PORT, () => {
   }
   console.log('');
 
-  const sheetsSync = require('./services/sheets-sync');
+  const sheetsSync     = require('./services/sheets-sync');
+  const accountingSync = require('./services/accounting-sync');
 
   async function autoSyncWoo(label) {
     console.log(`[${label}] WooCommerce sync starting...`);
@@ -84,6 +85,15 @@ app.listen(PORT, () => {
       console.log(`[${label}] WooCommerce sync complete: ${total} orders (${summary})`);
     } catch (err) {
       console.error(`[${label}] WooCommerce sync failed:`, err.message);
+    }
+  }
+
+  async function autoSyncAccounting(label) {
+    try {
+      const { woocommerce: wc, sandoriai: sa } = accountingSync.syncAccountingEntries();
+      console.log(`[${label}] accounting entries: WC +${wc.added}, Sandoriai +${sa.added}`);
+    } catch (err) {
+      console.error(`[${label}] accounting sync failed:`, err.message);
     }
   }
 
@@ -103,6 +113,7 @@ app.listen(PORT, () => {
 
   setTimeout(async () => {
     await autoSyncWoo('startup');
+    await autoSyncAccounting('startup');
     await autoSyncSheets('startup');
   }, 3000);
 

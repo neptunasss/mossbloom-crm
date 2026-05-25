@@ -8,6 +8,8 @@ const STORE_NAME = {
   mossbloom_de: 'mossbloom.de',
 };
 
+const WC_STORES = ['bloom_lt', 'mossbloom_dk', 'mossbloom_de'];
+
 const STORE_ROWS = [
   { id: 'bloom_lt',     name: 'bloom.lt' },
   { id: 'mossbloom_dk', name: 'mossbloom.dk' },
@@ -48,7 +50,6 @@ function currentQuarter() {
   return Math.floor(now.getMonth() / 3) + 1;
 }
 
-/** Resolve period preset → { from, to, label } */
 function resolvePeriod(query) {
   const now   = new Date();
   const year  = now.getFullYear();
@@ -122,35 +123,179 @@ function pctChange(current, previous) {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function storeKey(entry) {
-  if (entry.source === 'b2b_import') return 'b2b';
+function entryText(entry) {
+  return `${entry.description || ''} ${entry.notes || ''} ${entry.category || ''}`.toUpperCase();
+}
+
+/** B2B from import or Google Sheets PAJAMOS B2B lines */
+function isB2bEntry(entry) {
+  if (entry.type !== 'income') return false;
+  if (entry.source === 'b2b_import') return true;
+  if (entry.source === 'google_sheets') {
+    const t = entryText(entry);
+    return t.includes('B2B ORDER') || (t.includes('B2B') && !t.includes('PARDAVIMAS'));
+  }
+  return false;
+}
+
+/** PAJAMOS sheet lines that duplicate WooCommerce store sales */
+function isSheetsWcSale(entry) {
+  if (entry.source !== 'google_sheets' || entry.type !== 'income') return false;
+  if (isB2bEntry(entry)) return false;
+  const t = entryText(entry);
+  return t.includes('PARDAVIMAS') || t.includes('MOSSBLOOM.') || t.includes('BLOOM.LT') || t.includes('RESELLAS');
+}
+
+function storeKeyFromEntry(entry) {
+  if (isB2bEntry(entry)) return 'b2b';
+
+  if (entry.source === 'woocommerce' || entry.source === 'sandoriai') {
+    if (entry.store_id === 'bloom_lt') return 'bloom_lt';
+    if (entry.store_id === 'mossbloom_dk') return 'mossbloom_dk';
+    if (entry.store_id === 'mossbloom_de') return 'mossbloom_de';
+    return null;
+  }
+
+  if (entry.source === 'google_sheets' && entry.type === 'income') {
+    const t = entryText(entry);
+    if (t.includes('MOSSBLOOM.DK') || t.includes('MOSSBLOOM_DK')) return 'mossbloom_dk';
+    if (t.includes('MOSSBLOOM.DE') || t.includes('MOSSBLOOM_DE')) return 'mossbloom_de';
+    if (t.includes('BLOOM.LT') || t.includes('BLOOM_LT') || t.includes('RESELLAS') || t.includes('PROMILESS')) {
+      return 'bloom_lt';
+    }
+  }
+
   if (entry.store_id === 'bloom_lt') return 'bloom_lt';
   if (entry.store_id === 'mossbloom_dk') return 'mossbloom_dk';
   if (entry.store_id === 'mossbloom_de') return 'mossbloom_de';
   return null;
 }
 
-function matchesStoreFilter(entry, storeId) {
-  if (!storeId) return true;
-  if (storeId === 'b2b') return entry.source === 'b2b_import';
-  if (storeId === 'bloom_lt') return entry.store_id === 'bloom_lt' && entry.source !== 'b2b_import';
-  return entry.store_id === storeId;
+function storeKey(entry) {
+  return storeKeyFromEntry(entry);
 }
 
-function aggregateEntries(entries, rate) {
-  let incomeEUR = 0;
-  let expensesEUR = 0;
-  let orderCount = 0;
+function matchesStoreFilter(entry, storeId) {
+  if (!storeId) return true;
+  if (storeId === 'b2b') return isB2bEntry(entry);
+  if (storeId === 'bloom_lt') {
+    return storeKeyFromEntry(entry) === 'bloom_lt' && !isB2bEntry(entry);
+  }
+  return storeKeyFromEntry(entry) === storeId;
+}
 
+function wcOrdersInPeriod(db, storeId, from, to) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS c FROM orders_cache
+    WHERE store_id = ?
+      AND status IN ('completed','processing')
+      AND substr(date_created, 1, 10) >= ?
+      AND substr(date_created, 1, 10) <= ?
+  `).get(storeId, from, to);
+  return row.c || 0;
+}
+
+function wcIncomeFromCache(db, storeId, from, to, rate) {
+  const rows = db.prepare(`
+    SELECT total, currency FROM orders_cache
+    WHERE store_id = ?
+      AND status IN ('completed','processing')
+      AND substr(date_created, 1, 10) >= ?
+      AND substr(date_created, 1, 10) <= ?
+  `).all(storeId, from, to);
+
+  let sum = 0;
+  for (const r of rows) sum += fx.toEur(r.total, r.currency, rate);
+  return sum;
+}
+
+function sandoriaiIncome(entries, storeId, rate) {
+  let sum = 0;
   for (const e of entries) {
-    const eur = fx.toEur(e.amount, e.currency, rate);
-    if (e.type === 'income') {
-      incomeEUR += eur;
-      if (['woocommerce', 'sandoriai', 'b2b_import'].includes(e.source)) orderCount++;
-    } else {
-      expensesEUR += eur;
+    if (e.type !== 'income' || e.source !== 'sandoriai') continue;
+    if (storeId && storeKeyFromEntry(e) !== storeId) continue;
+    sum += fx.toEur(e.amount, e.currency, rate);
+  }
+  return sum;
+}
+
+function b2bIncome(entries, rate) {
+  let sum = 0;
+  let count = 0;
+  for (const e of entries) {
+    if (!isB2bEntry(e)) continue;
+    sum += fx.toEur(e.amount, e.currency, rate);
+    count++;
+  }
+  return { incomeEUR: sum, orders: count };
+}
+
+function manualAndOtherIncome(entries, rate) {
+  let sum = 0;
+  for (const e of entries) {
+    if (e.type !== 'income') continue;
+    if (['woocommerce', 'sandoriai', 'b2b_import', 'google_sheets'].includes(e.source)) continue;
+    if (isSheetsWcSale(e)) continue;
+    sum += fx.toEur(e.amount, e.currency, rate);
+  }
+  return sum;
+}
+
+function storeIncome(db, entries, storeId, from, to, rate) {
+  if (storeId === 'b2b') {
+    return b2bIncome(entries, rate).incomeEUR;
+  }
+
+  const fromCache = wcIncomeFromCache(db, storeId, from, to, rate);
+  if (fromCache > 0) return fromCache;
+
+  let fromAcct = 0;
+  for (const e of entries) {
+    if (e.type !== 'income') continue;
+    if (e.source === 'woocommerce' && storeKeyFromEntry(e) === storeId) {
+      fromAcct += fx.toEur(e.amount, e.currency, rate);
     }
   }
+  if (fromAcct > 0) return fromAcct;
+
+  let fromSheets = 0;
+  for (const e of entries) {
+    if (e.source === 'google_sheets' && storeKeyFromEntry(e) === storeId && isSheetsWcSale(e)) {
+      fromSheets += fx.toEur(e.amount, e.currency, rate);
+    }
+  }
+  return fromSheets + sandoriaiIncome(entries, storeId, rate);
+}
+
+function storeOrderCount(db, entries, storeId, from, to) {
+  if (storeId === 'b2b') return b2bIncome(entries, 1).orders;
+  return wcOrdersInPeriod(db, storeId, from, to);
+}
+
+function aggregateEntries(db, entries, from, to, rate) {
+  let expensesEUR = 0;
+  for (const e of entries) {
+    if (e.type === 'expense') expensesEUR += fx.toEur(e.amount, e.currency, rate);
+  }
+
+  let incomeEUR = 0;
+  let orderCount = 0;
+
+  for (const sid of WC_STORES) {
+    incomeEUR  += wcIncomeFromCache(db, sid, from, to, rate);
+    orderCount += wcOrdersInPeriod(db, sid, from, to);
+  }
+
+  incomeEUR += sandoriaiIncome(entries, null, rate);
+  for (const e of entries) {
+    if (e.type === 'income' && e.source === 'sandoriai') orderCount++;
+  }
+
+  const b2b = b2bIncome(entries, rate);
+  incomeEUR  += b2b.incomeEUR;
+  orderCount += b2b.orders;
+
+  incomeEUR += manualAndOtherIncome(entries, rate);
 
   const profitEUR = incomeEUR - expensesEUR;
   const profitMarginPct = incomeEUR > 0 ? (profitEUR / incomeEUR) * 100 : 0;
@@ -159,52 +304,30 @@ function aggregateEntries(entries, rate) {
   return { incomeEUR, expensesEUR, profitEUR, profitMarginPct, orderCount, avgOrderEUR };
 }
 
-function aggregateByStore(entries, rate) {
-  const stores = {};
-  for (const row of STORE_ROWS) {
-    stores[row.id] = { orders: 0, incomeEUR: 0 };
-  }
-
-  for (const e of entries) {
-    if (e.type !== 'income') continue;
-    const key = storeKey(e);
-    if (!key || !stores[key]) continue;
-    stores[key].incomeEUR += fx.toEur(e.amount, e.currency, rate);
-    if (['woocommerce', 'sandoriai', 'b2b_import'].includes(e.source)) {
-      stores[key].orders++;
-    }
-  }
-
-  return stores;
-}
-
-function buildStoreBreakdown(currentEntries, prevEntries, rate) {
-  const cur       = aggregateByStore(currentEntries, rate);
-  const prev      = aggregateByStore(prevEntries, rate);
-  const curAll    = aggregateEntries(currentEntries, rate);
-  const prevAll   = aggregateEntries(prevEntries, rate);
-  const totalIncome = curAll.incomeEUR;
-  const totalOrders = curAll.orderCount;
+function buildStoreBreakdown(db, currentEntries, prevEntries, rate, period, prevPeriod) {
+  const curAll  = aggregateEntries(db, currentEntries, period.from, period.to, rate);
+  const prevAll = aggregateEntries(db, prevEntries, prevPeriod.from, prevPeriod.to, rate);
 
   const rows = STORE_ROWS.map(row => {
-    const c = cur[row.id]  || { orders: 0, incomeEUR: 0 };
-    const p = prev[row.id] || { orders: 0, incomeEUR: 0 };
-    const pctOfTotal = totalIncome > 0 ? (c.incomeEUR / totalIncome) * 100 : 0;
+    const incomeEUR = storeIncome(db, currentEntries, row.id, period.from, period.to, rate);
+    const prevIncome = storeIncome(db, prevEntries, row.id, prevPeriod.from, prevPeriod.to, rate);
+    const orders = storeOrderCount(db, currentEntries, row.id, period.from, period.to);
+
     return {
       id: row.id,
       name: row.name,
-      orders: c.orders,
-      incomeEUR: c.incomeEUR,
-      pctOfTotal,
-      changePct: pctChange(c.incomeEUR, p.incomeEUR),
+      orders,
+      incomeEUR,
+      pctOfTotal: curAll.incomeEUR > 0 ? (incomeEUR / curAll.incomeEUR) * 100 : 0,
+      changePct: pctChange(incomeEUR, prevIncome),
     };
   });
 
   rows.push({
     id: 'total',
     name: 'TOTAL',
-    orders: totalOrders,
-    incomeEUR: totalIncome,
+    orders: curAll.orderCount,
+    incomeEUR: curAll.incomeEUR,
     pctOfTotal: 100,
     changePct: pctChange(curAll.incomeEUR, prevAll.incomeEUR),
   });
@@ -219,17 +342,16 @@ function monthlySparkline(db, metric, from, to, rate) {
   let d = new Date(start.getFullYear(), start.getMonth(), 1);
 
   while (d <= end) {
-    const key  = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
     const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const mFrom = toDateStr(d > start ? d : start);
     const mTo   = toDateStr(mEnd < end ? mEnd : end);
 
     const rows = db.prepare(`
-      SELECT type, source, amount, currency FROM accounting_entries
+      SELECT * FROM accounting_entries
       WHERE entry_date >= ? AND entry_date <= ?
     `).all(mFrom, mTo);
 
-    const agg = aggregateEntries(rows, rate);
+    const agg = aggregateEntries(db, rows, mFrom, mTo, rate);
     let val = 0;
     if (metric === 'income')       val = agg.incomeEUR;
     else if (metric === 'expenses') val = agg.expensesEUR;
@@ -254,28 +376,28 @@ function buildChartMonths(db, rate) {
   }
 
   return monthKeys.map(month => {
-    const like = `${month}-%`;
+    const from = `${month}-01`;
+    const lastDay = new Date(parseInt(month.slice(0, 4), 10), parseInt(month.slice(5, 7), 10), 0);
+    const to = toDateStr(lastDay);
+
     const entries = db.prepare(`
-      SELECT type, source, store_id, amount, currency FROM accounting_entries
-      WHERE entry_date LIKE ?
-    `).all(like);
+      SELECT * FROM accounting_entries WHERE entry_date LIKE ?
+    `).all(`${month}-%`);
 
-    let incomeEUR = 0;
-    let expensesEUR = 0;
+    const agg = aggregateEntries(db, entries, from, to, rate);
+
     const stores = { bloom_lt: 0, mossbloom_dk: 0, mossbloom_de: 0, b2b: 0 };
-
-    for (const e of entries) {
-      const eur = fx.toEur(e.amount, e.currency, rate);
-      if (e.type === 'income') {
-        incomeEUR += eur;
-        const sk = storeKey(e);
-        if (sk && stores[sk] !== undefined) stores[sk] += eur;
-      } else {
-        expensesEUR += eur;
-      }
+    for (const sid of WC_STORES) {
+      stores[sid] = wcIncomeFromCache(db, sid, from, to, rate);
     }
+    stores.b2b = b2bIncome(entries, rate).incomeEUR;
 
-    return { month, incomeEUR, expensesEUR, stores };
+    return {
+      month,
+      incomeEUR: agg.incomeEUR,
+      expensesEUR: agg.expensesEUR,
+      stores,
+    };
   });
 }
 
@@ -301,8 +423,8 @@ async function buildDashboard(db, query) {
   const currentAll = fetchEntries(period.from, period.to);
   const prevAll    = fetchEntries(prev.from, prev.to);
 
-  const curAgg  = aggregateEntries(currentAll, rate);
-  const prevAgg = aggregateEntries(prevAll, rate);
+  const curAgg  = aggregateEntries(db, currentAll, period.from, period.to, rate);
+  const prevAgg = aggregateEntries(db, prevAll, prev.from, prev.to, rate);
 
   const stats = {
     income:       statBlock(curAgg.incomeEUR,       prevAgg.incomeEUR,       monthlySparkline(db, 'income',   period.from, period.to, rate)),
@@ -316,7 +438,7 @@ async function buildDashboard(db, query) {
   let entries = currentAll.map(e => ({
     ...e,
     amountEUR: fx.toEur(e.amount, e.currency, rate),
-    storeKey:  storeKey(e) || e.store_id || '',
+    storeKey:  storeKeyFromEntry(e) || e.store_id || '',
   }));
 
   const { type, category, store_id } = query;
@@ -330,7 +452,7 @@ async function buildDashboard(db, query) {
     previousPeriod: prev,
     stats,
     chart: { months: buildChartMonths(db, rate) },
-    stores: buildStoreBreakdown(currentAll, prevAll, rate),
+    stores: buildStoreBreakdown(db, currentAll, prevAll, rate, period, prev),
     entries,
     total: entries.length,
   };
@@ -342,6 +464,9 @@ module.exports = {
   resolvePeriod,
   previousPeriod,
   storeKey,
+  storeKeyFromEntry,
   matchesStoreFilter,
+  isB2bEntry,
+  isSheetsWcSale,
   buildDashboard,
 };
