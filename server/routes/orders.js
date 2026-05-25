@@ -53,8 +53,8 @@ router.post('/sync', requireAuth, async (req, res) => {
 
     // Check if this store has been synced before (to avoid spamming on first sync)
     const wasSyncedBefore = db.prepare(
-      'SELECT id FROM sync_log WHERE store_id = ? AND status = "success" LIMIT 1'
-    ).get(store.id);
+      'SELECT id FROM sync_log WHERE store_id = ? AND status = ? LIMIT 1'
+    ).get(store.id, 'success');
 
     try {
       const orders = await fetchAllStoreOrders(store);
