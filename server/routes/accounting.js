@@ -35,15 +35,44 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 router.get('/summary', requireAuth, async (req, res) => {
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const like  = `${month}-%`;
-  const base  = req.query.store_id ? ' AND store_id = ?' : '';
-  const args  = req.query.store_id ? [like, req.query.store_id] : [like];
+  const rate  = await fx.getDkkPerEur();
 
-  const rate   = await fx.getDkkPerEur();
-  const incRow = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='income'  AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
-  const expRow = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='expense' AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
+  // WooCommerce orders from orders_cache (non-cancelled, all three stores)
+  const storeFilter = req.query.store_id && req.query.store_id !== 'b2b'
+    ? ' AND store_id = ?'
+    : " AND store_id IN ('bloom_lt','mossbloom_dk','mossbloom_de')";
+  const storeArgs = req.query.store_id && req.query.store_id !== 'b2b'
+    ? [like, req.query.store_id]
+    : [like];
 
-  let incomeEUR = 0, expensesEUR = 0;
-  incRow.forEach(r => { incomeEUR   += fx.toEur(r.total, r.currency, rate); });
+  let incomeEUR = 0;
+
+  if (!req.query.store_id || req.query.store_id !== 'b2b') {
+    const wcRows = db.prepare(
+      `SELECT total, currency FROM orders_cache
+       WHERE substr(date_created, 1, 7) = ?${storeFilter}
+         AND status NOT IN ('cancelled','refunded','failed')`
+    ).all(...storeArgs.map((a, i) => i === 0 ? month : a));
+    wcRows.forEach(r => { incomeEUR += fx.toEur(parseFloat(r.total) || 0, r.currency, rate); });
+  }
+
+  // B2B manual entries from accounting_entries
+  const b2bBase = req.query.store_id === 'b2b' ? " AND store_id = 'b2b'" : '';
+  const b2bRows = db.prepare(
+    `SELECT currency, SUM(amount) AS total FROM accounting_entries
+     WHERE type='income' AND source IN ('b2b','b2b_import') AND entry_date LIKE ?${b2bBase}
+     GROUP BY currency`
+  ).all(like);
+  b2bRows.forEach(r => { incomeEUR += fx.toEur(r.total, r.currency, rate); });
+
+  // Expenses from accounting_entries
+  const expBase = req.query.store_id ? ' AND store_id = ?' : '';
+  const expArgs = req.query.store_id ? [like, req.query.store_id] : [like];
+  const expRow  = db.prepare(
+    `SELECT currency, SUM(amount) AS total FROM accounting_entries
+     WHERE type='expense' AND entry_date LIKE ?${expBase} GROUP BY currency`
+  ).all(...expArgs);
+  let expensesEUR = 0;
   expRow.forEach(r => { expensesEUR += fx.toEur(r.total, r.currency, rate); });
 
   res.json({ incomeEUR, expensesEUR, profitEUR: incomeEUR - expensesEUR, rate, month });
