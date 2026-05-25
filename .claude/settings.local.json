@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Set-Location \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\"; $proc = Start-Process -FilePath \"node\" -ArgumentList \"server/index.js\" -PassThru -RedirectStandardOutput \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\\\\server.log\" -RedirectStandardError \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\\\\server.err.log\"; Start-Sleep -Seconds 3; Get-Content \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\\\\server.log\" -ErrorAction SilentlyContinue; Get-Content \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\\\\server.err.log\" -ErrorAction SilentlyContinue; $proc.Id)",
+      "PowerShell(Start-Sleep -Seconds 1; Invoke-RestMethod -Uri \"http://localhost:3000/api/auth/status\" -Method GET | ConvertTo-Json)",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\"; $proc = Start-Process -FilePath \"node\" -ArgumentList \"server/index.js\" -PassThru -RedirectStandardOutput \"server.log\" -RedirectStandardError \"server.err.log\"; Start-Sleep -Seconds 3; Get-Content \"server.log\" -ErrorAction SilentlyContinue; Get-Content \"server.err.log\" -ErrorAction SilentlyContinue; $proc.Id)",
+      "PowerShell(Get-Process *)",
+      "Bash(node server/index.js)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -c /tmp/cook.txt -b /tmp/cook.txt -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d \"{\\\\\"username\\\\\":\\\\\"admin\\\\\",\\\\\"password\\\\\":\\\\\"mossbloom2024\\\\\"}\")",
+      "Bash(curl -s -c /tmp/cook.txt -b /tmp/cook.txt \"http://localhost:3000/api/deals?limit=5\")",
+      "Bash(curl -s -c /tmp/cook.txt -b /tmp/cook.txt \"http://localhost:3000/api/files?deal_id=1\")",
+      "Bash(grep -v \"Use \\\\`node\")",
+      "Bash(curl -s -c /tmp/ck.txt -b /tmp/ck.txt -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"mossbloom2024\"}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Login:', d.get\\('success'\\)\\)\")",
+      "Bash(curl -s -c /tmp/ck.txt -b /tmp/ck.txt 'http://localhost:3000/api/accounting/summary?month=2026-05')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Summary:', d\\)\")",
+      "Bash(curl -s -c /tmp/ck.txt -b /tmp/ck.txt -X POST http://localhost:3000/api/accounting/sync -H 'Content-Type: application/json')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); r=d['results']; print\\(f'WooCommerce: +{r[\\\\\"woocommerce\\\\\"][\\\\\"added\\\\\"]} added, {r[\\\\\"woocommerce\\\\\"][\\\\\"skipped\\\\\"]} skipped'\\); print\\(f'Sandoriai: +{r[\\\\\"sandoriai\\\\\"][\\\\\"added\\\\\"]} added, {r[\\\\\"sandoriai\\\\\"][\\\\\"skipped\\\\\"]} skipped'\\)\")",
+      "Bash(curl -s -c /tmp/ck.txt -b /tmp/ck.txt 'http://localhost:3000/api/accounting?limit=3')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'Entries total: {d[\\\\\"total\\\\\"]}, returned: {len\\(d[\\\\\"entries\\\\\"]\\)}'\\)\")",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(curl -s -c /tmp/ck2.txt -b /tmp/ck2.txt -X POST \"http://localhost:3000/api/accounting/sync\" -H \"Content-Type: application/json\")",
+      "Bash(curl -s -c /tmp/acct_cookies.txt -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"mossbloom2024\"}')",
+      "Bash(curl -s -b /tmp/acct_cookies.txt \"http://localhost:3000/api/accounting/summary?month=2026-05\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

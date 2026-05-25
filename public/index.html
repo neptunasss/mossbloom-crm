@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mossbloom CRM</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<div id="sidebar-overlay"></div>
+
+<div class="app-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">M</div>
+      <div class="brand-text">
+        <span class="brand-name">Mossbloom</span>
+        <span class="brand-sub">CRM</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="orders">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
+        </svg>
+        Orders
+      </a>
+      <a href="#" class="nav-item" data-view="deals">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        Sandoriai
+      </a>
+      <a href="#" class="nav-item" data-view="accounting">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+        </svg>
+        Apskaita
+      </a>
+      <a href="#" class="nav-item" data-view="calculator">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4"/>
+          <circle cx="16" cy="17" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+        Calculator
+      </a>
+    </nav>
+
+    <div class="sidebar-stores">
+      <div class="sidebar-section-title">Stores</div>
+      <div id="store-status"></div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">A</div>
+        <span id="user-name">admin</span>
+      </div>
+      <button id="logout-btn" class="btn-icon" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+
+    <header class="page-header">
+      <div class="header-left">
+        <button id="sidebar-toggle" class="btn-icon sidebar-toggle" aria-label="Toggle menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+        <h1 class="page-title" id="page-title">Orders</h1>
+        <span id="header-count" class="count-badge">—</span>
+      </div>
+      <div class="header-right">
+        <button id="sync-btn" class="btn-sync">
+          <svg id="sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+            <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+          </svg>
+          <span id="sync-label">Sync</span>
+        </button>
+        <button id="new-deal-btn" class="btn-primary" hidden>+ New Deal</button>
+      </div>
+    </header>
+
+    <!-- ── Orders View ── -->
+    <div class="view" id="view-orders">
+      <div class="content-body">
+
+        <div class="filters-bar">
+          <div class="store-tabs">
+            <button class="tab-btn active" data-store="all">All Stores</button>
+            <button class="tab-btn" data-store="bloom_lt">
+              <span class="tab-dot" style="background:#2ea043"></span>bloom.lt
+            </button>
+            <button class="tab-btn" data-store="mossbloom_dk">
+              <span class="tab-dot" style="background:#1f6feb"></span>mossbloom.dk
+            </button>
+            <button class="tab-btn" data-store="mossbloom_de">
+              <span class="tab-dot" style="background:#da3633"></span>mossbloom.de
+            </button>
+          </div>
+          <div class="filter-controls">
+            <select id="status-filter" class="filter-select">
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="on-hold">On Hold</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="refunded">Refunded</option>
+              <option value="failed">Failed</option>
+            </select>
+            <div class="search-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="search" id="search-input" class="search-input" placeholder="Search name, email or order #">
+            </div>
+          </div>
+        </div>
+
+        <div id="orders-loading" class="loading-bar" hidden><div class="loading-progress"></div></div>
+
+        <div id="orders-table-wrap" class="table-wrap">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Store</th>
+                <th>Order</th>
+                <th>Customer</th>
+                <th class="col-email">Email</th>
+                <th class="col-date">Date</th>
+                <th>Status</th>
+                <th>Production</th>
+                <th class="text-right">Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+          <div id="orders-empty" class="empty-state" hidden>
+            <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg></div>
+            <h3>No orders found</h3>
+            <p>Try adjusting your filters or syncing your stores.</p>
+            <button class="btn-primary" onclick="syncOrders()">Sync Now</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Sandoriai View ── -->
+    <div class="view" id="view-deals" hidden>
+
+      <!-- Accounting bar -->
+      <div class="accounting-bar" id="deals-accounting" hidden></div>
+
+      <!-- Toolbar (filters + loading) -->
+      <div class="deals-toolbar">
+        <div class="filters-bar deals-filters-bar">
+          <div class="view-toggle-group">
+            <button class="view-toggle-btn active" id="deals-view-pipeline" onclick="setDealsView('pipeline')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="8" rx="1"/></svg>
+              Pipeline
+            </button>
+            <button class="view-toggle-btn" id="deals-view-table" onclick="setDealsView('table')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+              Table
+            </button>
+          </div>
+          <div class="filter-controls">
+            <div class="search-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="search" id="deals-search-input" class="search-input" placeholder="Search customer or description">
+            </div>
+          </div>
+        </div>
+        <div id="deals-loading" class="loading-bar" hidden><div class="loading-progress"></div></div>
+      </div>
+
+      <!-- Scrollable area -->
+      <div class="deals-scroll-area" id="deals-scroll-area">
+
+        <!-- Pipeline board -->
+        <div id="deals-pipeline-wrap">
+          <div class="pipeline-board">
+
+            <div class="pipeline-col" data-status="lead">
+              <div class="pipeline-col-header" style="border-top:3px solid #6b7280">
+                <span>Lead</span>
+                <span class="pipeline-count" id="col-lead-count">0</span>
+              </div>
+              <div class="pipeline-cards" id="col-lead"></div>
+            </div>
+
+            <div class="pipeline-col" data-status="quoted">
+              <div class="pipeline-col-header" style="border-top:3px solid #2563eb">
+                <span>Quoted</span>
+                <span class="pipeline-count" id="col-quoted-count">0</span>
+              </div>
+              <div class="pipeline-cards" id="col-quoted"></div>
+            </div>
+
+            <div class="pipeline-col" data-status="negotiating">
+              <div class="pipeline-col-header" style="border-top:3px solid #d97706">
+                <span>Negotiating</span>
+                <span class="pipeline-count" id="col-negotiating-count">0</span>
+              </div>
+              <div class="pipeline-cards" id="col-negotiating"></div>
+            </div>
+
+            <div class="pipeline-col" data-status="won">
+              <div class="pipeline-col-header" style="border-top:3px solid #16a34a">
+                <span>Won ✓</span>
+                <span class="pipeline-count" id="col-won-count">0</span>
+              </div>
+              <div class="pipeline-cards" id="col-won"></div>
+            </div>
+
+            <div class="pipeline-col" data-status="lost">
+              <div class="pipeline-col-header" style="border-top:3px solid #dc2626">
+                <span>Lost</span>
+                <span class="pipeline-count" id="col-lost-count">0</span>
+              </div>
+              <div class="pipeline-cards" id="col-lost"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Table view -->
+        <div id="deals-table-wrap" class="table-wrap" hidden>
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Description</th>
+                <th class="col-date">Market</th>
+                <th class="col-date">Date</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th class="text-right">Amount</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="deals-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="deals-empty" class="empty-state" hidden>
+          <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+          <h3>No deals yet</h3>
+          <p>Log orders that happen outside WooCommerce — bank transfers, cash, or custom arrangements.</p>
+          <button class="btn-primary" onclick="openDealModal()">+ New Deal</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Apskaita View ── -->
+    <div class="view" id="view-accounting" hidden>
+
+      <!-- Summary bar -->
+      <div class="acct-summary-bar" id="acct-summary">
+        <div class="acct-summary-card acct-income">
+          <div class="acct-summary-icon">📈</div>
+          <div class="acct-summary-body">
+            <div class="acct-summary-val">—</div>
+            <div class="acct-summary-lbl">Pajamos šį mėnesį</div>
+          </div>
+        </div>
+        <div class="acct-summary-card acct-expense">
+          <div class="acct-summary-icon">📉</div>
+          <div class="acct-summary-body">
+            <div class="acct-summary-val">—</div>
+            <div class="acct-summary-lbl">Išlaidos šį mėnesį</div>
+          </div>
+        </div>
+        <div class="acct-summary-card acct-profit">
+          <div class="acct-summary-icon">💼</div>
+          <div class="acct-summary-body">
+            <div class="acct-summary-val">—</div>
+            <div class="acct-summary-lbl">Pelnas šį mėnesį</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="acct-toolbar">
+        <div class="acct-toolbar-filters">
+          <select id="acct-month-filter" class="filter-select"></select>
+          <select id="acct-type-filter" class="filter-select">
+            <option value="">Visi tipai</option>
+            <option value="income">Pajamos</option>
+            <option value="expense">Išlaidos</option>
+          </select>
+          <select id="acct-category-filter" class="filter-select">
+            <option value="">Visos kategorijos</option>
+            <option>Pardavimai</option>
+            <option>Žaliavos</option>
+            <option>Nuoma</option>
+            <option>Reklama</option>
+            <option>Transportas</option>
+            <option>Darbo užmokestis</option>
+            <option>Komisiniai</option>
+            <option>Kita</option>
+          </select>
+          <select id="acct-store-filter" class="filter-select">
+            <option value="">Visos parduotuvės</option>
+            <option value="bloom_lt">bloom.lt</option>
+            <option value="mossbloom_dk">mossbloom.dk</option>
+            <option value="mossbloom_de">mossbloom.de</option>
+          </select>
+        </div>
+        <div class="acct-toolbar-actions">
+          <button id="acct-sync-btn" class="btn-sync" onclick="syncAccounting()">
+            <svg id="acct-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+            </svg>
+            Sinchronizuoti
+          </button>
+          <button class="btn-secondary" onclick="exportCSV()" title="Eksportuoti CSV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="btn-primary" onclick="openExpenseModal()">+ Pridėti įrašą</button>
+        </div>
+      </div>
+
+      <div id="acct-loading" class="loading-bar" hidden><div class="loading-progress"></div></div>
+
+      <div class="content-body">
+
+        <!-- P&L Chart -->
+        <div class="acct-chart-card">
+          <div class="acct-chart-header">
+            <span class="acct-chart-title">Pajamų ir išlaidų dinamika — paskutiniai 6 mėn.</span>
+            <div class="view-toggle-group">
+              <button class="view-toggle-btn active" id="chart-eur-btn" onclick="setChartCurrency('EUR')">€ EUR</button>
+              <button class="view-toggle-btn" id="chart-dkk-btn" onclick="setChartCurrency('DKK')">kr DKK</button>
+            </div>
+          </div>
+          <div class="acct-chart-body">
+            <canvas id="acct-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Transactions table -->
+        <div id="acct-table-wrap" class="table-wrap">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th class="col-date">Data</th>
+                <th>Aprašymas</th>
+                <th>Kategorija</th>
+                <th>Parduotuvė</th>
+                <th class="text-right">Suma</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="acct-tbody"></tbody>
+          </table>
+          <div id="acct-empty" class="empty-state" hidden>
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+              </svg>
+            </div>
+            <h3>Įrašų nėra</h3>
+            <p>Sinchronizuokite WooCommerce užsakymus arba pridėkite įrašą rankiniu būdu.</p>
+            <button class="btn-primary" onclick="syncAccounting()">↻ Sinchronizuoti</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ── Calculator View ── -->
+    <div class="view" id="view-calculator" hidden>
+      <div class="content-body content-body--calc">
+        <div class="calc-layout">
+
+          <!-- Input panel -->
+          <div class="calc-form-panel">
+            <div class="calc-section">
+              <label class="calc-label">Product Type</label>
+              <div class="toggle-group">
+                <button class="toggle-btn active" data-type="round">⬤ Round</button>
+                <button class="toggle-btn" data-type="rectangular">▬ Rectangular</button>
+              </div>
+            </div>
+
+            <div class="calc-section" id="round-inputs">
+              <label class="calc-label">Diameter (cm)</label>
+              <input type="number" id="calc-diameter" class="calc-input" placeholder="60" min="1" max="500">
+            </div>
+
+            <div class="calc-section" id="rect-inputs" hidden>
+              <label class="calc-label">Dimensions (cm)</label>
+              <div class="dim-row">
+                <input type="number" id="calc-width"  class="calc-input" placeholder="Width"  min="1">
+                <span class="dim-sep">×</span>
+                <input type="number" id="calc-height" class="calc-input" placeholder="Height" min="1">
+              </div>
+            </div>
+
+            <div class="calc-section">
+              <label class="calc-label">Moss Type</label>
+              <select id="calc-moss" class="calc-input">
+                <option value="reindeer">Reindeer Moss</option>
+                <option value="ball">Ball Moss</option>
+                <option value="flat">Flat Sheet Moss</option>
+                <option value="cushion">Cushion Moss</option>
+                <option value="mixed">Mixed Moss</option>
+              </select>
+            </div>
+
+            <div class="calc-section">
+              <label class="calc-label">Quantity</label>
+              <input type="number" id="calc-qty" class="calc-input" value="1" min="1" max="1000">
+            </div>
+
+            <div class="calc-section">
+              <label class="calc-label">Include</label>
+              <div class="check-group">
+                <label class="check-item"><input type="checkbox" id="inc-frame"     checked> Frame / Backing</label>
+                <label class="check-item"><input type="checkbox" id="inc-labor"     checked> Labor</label>
+                <label class="check-item"><input type="checkbox" id="inc-packaging" checked> Packaging</label>
+              </div>
+            </div>
+
+            <div class="calc-section">
+              <label class="calc-label">Markup</label>
+              <div class="dim-row">
+                <input type="number" id="calc-markup" class="calc-input" value="2.5" step="0.1" min="1.0" max="20" style="max-width:90px">
+                <span class="dim-sep" style="font-size:13px;color:var(--text-muted)">× cost price</span>
+              </div>
+            </div>
+
+            <!-- Pricing settings -->
+            <details class="pricing-details">
+              <summary>Edit Pricing Defaults</summary>
+              <div class="pricing-grid" id="pricing-grid">
+                <!-- populated by calculator.js -->
+              </div>
+              <button class="btn-primary" style="width:100%;margin-top:12px" onclick="savePricingSettings()">Save Pricing</button>
+            </details>
+          </div>
+
+          <!-- Results panel -->
+          <div class="calc-results-panel" id="calc-results">
+            <div class="calc-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" opacity="0.3">
+                <rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4"/>
+              </svg>
+              <p>Enter dimensions to calculate</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Customer Panel (right drawer) ── -->
+<div id="customer-overlay" class="customer-overlay"></div>
+<div id="customer-panel" class="customer-panel">
+  <div class="panel-header">
+    <div class="panel-customer-id">
+      <div class="panel-avatar" id="panel-avatar">?</div>
+      <div>
+        <h2 id="panel-name">Customer</h2>
+        <p id="panel-email" class="text-muted" style="font-size:12px"></p>
+      </div>
+    </div>
+    <button class="btn-icon" id="close-panel-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="panel-body" class="panel-body">
+    <div class="panel-loading">Loading…</div>
+  </div>
+</div>
+
+<!-- ── Deal Modal ── -->
+<div id="deal-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="deal-modal-title">New Deal</h3>
+      <button class="btn-icon" onclick="closeDealModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="deal-form" onsubmit="return false">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Customer Name *</label>
+            <input type="text"  name="customer_name"  required placeholder="Full name">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="customer_email" placeholder="email@example.com">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="tel" name="customer_phone" placeholder="+370...">
+          </div>
+          <div class="form-group">
+            <label>Market</label>
+            <select name="store_id">
+              <option value="bloom_lt">bloom.lt (LT)</option>
+              <option value="mossbloom_dk">mossbloom.dk (DK)</option>
+              <option value="mossbloom_de">mossbloom.de (DE)</option>
+              <option value="custom">Other / External</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description *</label>
+          <input type="text" name="description" required placeholder="e.g. Round moss panel 60cm, Reindeer moss">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Product</label>
+            <input type="text" name="product" placeholder="e.g. Round panel">
+          </div>
+          <div class="form-group">
+            <label>Size</label>
+            <input type="text" name="size" placeholder="e.g. 60cm / 80×100cm">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" name="amount" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Currency</label>
+            <select name="currency">
+              <option value="EUR">EUR (€)</option>
+              <option value="DKK">DKK (kr)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Payment Method</label>
+            <select name="payment_method">
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cash">Cash</option>
+              <option value="invoice">Invoice (30 days)</option>
+              <option value="crypto">Crypto</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status">
+              <option value="lead">Lead</option>
+              <option value="quoted">Quoted</option>
+              <option value="negotiating">Negotiating</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Deal Date</label>
+            <input type="date" name="deal_date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="3" placeholder="Special instructions, custom dimensions, etc."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeDealModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveDeal()">Save Deal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── File Modal ── -->
+<div id="file-modal" class="modal-overlay" hidden>
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3>Attached Files</h3>
+      <button class="btn-icon" onclick="closeFileModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="file-modal-body">
+      <div class="file-loading">Loading…</div>
+    </div>
+    <div class="modal-footer">
+      <label class="btn-primary" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload File
+        <input type="file" id="file-upload-input" hidden accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="uploadFile(this)">
+      </label>
+      <button class="btn-secondary" onclick="closeFileModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Expense / Income Modal ── -->
+<div id="expense-modal" class="modal-overlay" hidden>
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3>Pridėti įrašą</h3>
+      <button class="btn-icon" onclick="closeExpenseModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="expense-form" onsubmit="return false">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipas</label>
+            <select name="type">
+              <option value="expense">📉 Išlaidos</option>
+              <option value="income">📈 Pajamos</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Kategorija</label>
+            <select name="category">
+              <option value="Pardavimai">Pardavimai</option>
+              <option value="Žaliavos">Žaliavos</option>
+              <option value="Nuoma">Nuoma</option>
+              <option value="Reklama">Reklama</option>
+              <option value="Transportas">Transportas</option>
+              <option value="Darbo užmokestis">Darbo užmokestis</option>
+              <option value="Komisiniai">Komisiniai</option>
+              <option value="Kita" selected>Kita</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Aprašymas *</label>
+          <input type="text" name="description" required placeholder="pvz. Žaliavos, nuoma, reklama...">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Suma *</label>
+            <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Valiuta</label>
+            <select name="currency">
+              <option value="EUR">EUR (€)</option>
+              <option value="DKK">DKK (kr)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" name="entry_date" required>
+        </div>
+        <div class="form-group">
+          <label>Pastabos</label>
+          <textarea name="notes" rows="2" placeholder="Papildoma informacija..."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeExpenseModal()">Atšaukti</button>
+      <button class="btn-primary" onclick="saveExpense()">Išsaugoti</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/deals.js"></script>
+<script src="/js/accounting.js"></script>
+<script src="/js/calculator.js"></script>
+</body>
+</html>
