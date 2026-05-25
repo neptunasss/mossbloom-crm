@@ -11,7 +11,6 @@ const CRM_CATEGORIES = [
   'Transportas', 'Darbo užmokestis', 'Komisiniai', 'Kita',
 ];
 
-/** Map TIPAS / sheet labels → CRM category names */
 const CATEGORY_MAP = {
   pardavimai: 'Pardavimai',
   pajamos: 'Pardavimai',
@@ -69,12 +68,31 @@ function getAuthClient() {
   });
 }
 
+function pad(n) { return String(n).padStart(2, '0'); }
+
+/** Excel serial → YYYY-MM-DD; also ISO and DD.MM.YYYY strings from Sheets */
+function parseDateCell(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${pad(dmy[2])}-${pad(dmy[1])}`;
+
+  const n = parseFloat(s.replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(n)) return null;
+
+  if (n >= 1 && n < 100000) {
+    const d = new Date((n - 25569) * 86400 * 1000);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+
+  return null;
+}
+
 function excelSerialToDate(serial) {
-  const n = parseFloat(String(serial).replace(',', '.'));
-  if (!Number.isFinite(n) || n < 1) return null;
-  const d = new Date((n - 25569) * 86400 * 1000);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  return parseDateCell(serial);
 }
 
 function mapCategory(tipas, entryType) {
@@ -116,15 +134,77 @@ function referenceId(sheetKey, entryType, entryDate, amount, tipas) {
   return `gs-${sheetKey}-${entryType}-${entryDate}-${cents}-${slug(tipas)}`;
 }
 
-function isHeaderRow(cols) {
-  const first = String(cols[0] || '').toLowerCase();
-  return first.includes('data') || first.includes('date') || first === 'data';
+function normalizeHeader(cell) {
+  return String(cell || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
 
-function parseAmount(raw, entryType) {
-  const n = parseFloat(String(raw || '').replace(',', '.').replace(/[^\d.-]/g, ''));
+/** Detect header row and column indices (TRANSAKCIJOS DATA, SUMA, TIPAS, SF, PASTABA) */
+function detectColumns(rows) {
+  const defaultCols = { date: 0, amount: 1, tipas: 2, invoice: 3, note: 4, headerRow: -1 };
+
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const row = rows[i];
+    if (!row || row.length < 2) continue;
+
+    const cells = row.map(normalizeHeader);
+    const hasDate   = cells.some(c => c.includes('transakcijos') || c === 'data' || c.includes('data'));
+    const hasAmount = cells.some(c => c === 'suma' || c.includes('suma'));
+    const hasTipas   = cells.some(c => c === 'tipas' || c.includes('tipas'));
+
+    if (hasDate && (hasAmount || hasTipas)) {
+      const cols = { ...defaultCols, headerRow: i };
+      cells.forEach((c, idx) => {
+        if (c.includes('transakcijos') || (c.includes('data') && !c.includes('pastaba'))) cols.date = idx;
+        else if (c === 'suma' || c.startsWith('suma')) cols.amount = idx;
+        else if (c === 'tipas' || c.startsWith('tipas')) cols.tipas = idx;
+        else if (c === 'sf' || c.startsWith('sf')) cols.invoice = idx;
+        else if (c.includes('pastaba') || c.includes('note')) cols.note = idx;
+      });
+      return cols;
+    }
+  }
+
+  return defaultCols;
+}
+
+function isHeaderRow(cols, colMap, rowIndex) {
+  if (rowIndex === colMap.headerRow) return true;
+  const c0 = normalizeHeader(cols[colMap.date]);
+  const c1 = normalizeHeader(cols[colMap.amount]);
+  if (c0.includes('transakcijos') || (c0.includes('data') && c1 === 'suma')) return true;
+  if (c1 === 'suma' && normalizeHeader(cols[colMap.tipas]) === 'tipas') return true;
+  return false;
+}
+
+function parseAmount(raw) {
+  let s = String(raw ?? '').trim();
+  if (!s) return null;
+
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith('-') || s.startsWith('−') || s.startsWith('–')) {
+    negative = true;
+    s = s.slice(1);
+  }
+
+  s = s.replace(/\s/g, '');
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+
+  const n = parseFloat(s.replace(/[^\d.]/g, ''));
   if (!Number.isFinite(n) || n === 0) return null;
-  return entryType === 'expense' ? Math.abs(n) : Math.abs(n);
+
+  return Math.abs(n);
 }
 
 function buildDescription(tipas, note, invoice) {
@@ -149,7 +229,7 @@ function buildNotes(invoice, note) {
   return bits.join(' · ');
 }
 
-function processRows(rows, entryType, sheetKey) {
+function processRows(rows, entryType, sheetKey, logPrefix) {
   const insertStmt = db.prepare(`
     INSERT INTO accounting_entries
       (type, source, store_id, reference_id, description, amount, currency, entry_date, category, notes)
@@ -160,20 +240,41 @@ function processRows(rows, entryType, sheetKey) {
     SELECT id FROM accounting_entries WHERE source = 'google_sheets' AND reference_id = ?
   `);
 
+  const colMap = detectColumns(rows);
+  const dataRows = rows.filter((_, i) => i !== colMap.headerRow && i > colMap.headerRow);
+
+  console.log(`${logPrefix} column map:`, JSON.stringify(colMap));
+  console.log(`${logPrefix} raw rows from API (${rows.length} total, ${dataRows.length} data rows):`);
+  rows.forEach((row, i) => {
+    console.log(`${logPrefix}   [${i}]`, JSON.stringify(row));
+  });
+
   let added = 0, skipped = 0, errors = 0;
+  const errorSamples = [];
 
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     if (!row || row.length < 2) continue;
-    if (isHeaderRow(row)) continue;
+    if (isHeaderRow(row, colMap, i)) {
+      console.log(`${logPrefix} row ${i}: skip header`);
+      continue;
+    }
 
-    const entryDate = excelSerialToDate(row[0]);
-    const amount    = parseAmount(row[1], entryType);
-    const tipas     = row[2];
-    const invoice   = row[3];
-    const note      = row[4];
+    const rawDate   = row[colMap.date];
+    const rawAmount = row[colMap.amount];
+    const tipas     = row[colMap.tipas];
+    const invoice   = row[colMap.invoice];
+    const note      = row[colMap.note];
+
+    const entryDate = parseDateCell(rawDate);
+    const amount    = parseAmount(rawAmount);
 
     if (!entryDate || amount == null) {
       errors++;
+      if (errorSamples.length < 8) {
+        errorSamples.push({ row: i, rawDate, rawAmount, tipas, reason: !entryDate ? 'bad_date' : 'bad_amount' });
+      }
+      console.log(`${logPrefix} row ${i}: PARSE ERROR`, { rawDate, rawAmount, tipas, entryDate, amount });
       continue;
     }
 
@@ -183,29 +284,81 @@ function processRows(rows, entryType, sheetKey) {
 
     if (existsStmt.get(ref)) {
       skipped++;
+      console.log(`${logPrefix} row ${i}: skip duplicate ref=${ref}`);
       continue;
     }
 
+    const description = buildDescription(tipas, note, invoice);
     insertStmt.run(
       entryType,
       storeId,
       ref,
-      buildDescription(tipas, note, invoice),
+      description,
       amount,
       entryDate,
       category,
       buildNotes(invoice, note),
     );
     added++;
+    console.log(`${logPrefix} row ${i}: INSERTED`, {
+      type: entryType,
+      date: entryDate,
+      amount,
+      category,
+      tipas,
+      ref,
+      description,
+    });
   }
 
-  return { added, skipped, errors };
+  if (errorSamples.length) {
+    console.log(`${logPrefix} parse error samples:`, JSON.stringify(errorSamples));
+  }
+
+  return { added, skipped, errors, colMap };
+}
+
+function normalizeSheetTitle(title) {
+  return String(title || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+async function listSheetTabs(sheets) {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: getSheetId(),
+    fields: 'sheets.properties.title',
+  });
+  return (meta.data.sheets || []).map(s => s.properties?.title).filter(Boolean);
+}
+
+function resolveTabName(tabs, preferred, keywords) {
+  if (tabs.includes(preferred)) return preferred;
+
+  const normPreferred = normalizeSheetTitle(preferred);
+  const match = tabs.find(t => normalizeSheetTitle(t) === normPreferred);
+  if (match) return match;
+
+  const fuzzy = tabs.find(t => {
+    const n = normalizeSheetTitle(t);
+    return keywords.every(kw => n.includes(kw));
+  });
+  if (fuzzy) {
+    console.log(`[sheets-sync] tab "${preferred}" → resolved as "${fuzzy}"`);
+    return fuzzy;
+  }
+
+  return preferred;
 }
 
 async function readSheet(sheets, sheetName) {
+  const range = `'${sheetName.replace(/'/g, "''")}'!A:E`;
+  console.log(`[sheets-sync] GET range: ${range}`);
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: getSheetId(),
-    range: `'${sheetName}'!A:E`,
+    range,
   });
   return res.data.values || [];
 }
@@ -219,16 +372,44 @@ async function runSync() {
   const auth   = getAuthClient();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  console.log(`[sheets-sync] reading sheet ${getSheetId()}...`);
+  console.log(`[sheets-sync] reading spreadsheet ${getSheetId()}...`);
 
-  const incomeRows  = await readSheet(sheets, SHEET_INCOME);
-  const expenseRows = await readSheet(sheets, SHEET_EXPENSE);
+  const tabs = await listSheetTabs(sheets);
+  console.log('[sheets-sync] available tabs:', JSON.stringify(tabs));
 
-  const income  = processRows(incomeRows,  'income',  'pajamos');
-  const expense = processRows(expenseRows, 'expense', 'islaidos');
+  const incomeTab  = resolveTabName(tabs, SHEET_INCOME,  ['pajamos', '2026']);
+  const expenseTab = resolveTabName(tabs, SHEET_EXPENSE, ['islaidos', '2026']);
+
+  console.log(`[sheets-sync] income tab: "${incomeTab}"`);
+  console.log(`[sheets-sync] expense tab: "${expenseTab}"`);
+
+  let incomeRows = [];
+  let expenseRows = [];
+
+  try {
+    incomeRows = await readSheet(sheets, incomeTab);
+    console.log(`[sheets-sync] PAJAMOS: read ${incomeRows.length} rows`);
+  } catch (err) {
+    console.error(`[sheets-sync] PAJAMOS read failed:`, err.message);
+    throw err;
+  }
+
+  try {
+    expenseRows = await readSheet(sheets, expenseTab);
+    console.log(`[sheets-sync] IŠLAIDOS: read ${expenseRows.length} rows`);
+  } catch (err) {
+    console.error(`[sheets-sync] IŠLAIDOS read failed (tab="${expenseTab}"):`, err.message);
+    console.error('[sheets-sync] tip: verify tab name matches exactly, including Š in IŠLAIDOS');
+    throw err;
+  }
+
+  const income  = processRows(incomeRows,  'income',  'pajamos',  '[sheets-sync][PAJAMOS]');
+  const expense = processRows(expenseRows, 'expense', 'islaidos', '[sheets-sync][IŠLAIDOS]');
 
   const result = {
     ok: true,
+    incomeTab,
+    expenseTab,
     income,
     expenses: expense,
     total: {
@@ -239,11 +420,11 @@ async function runSync() {
   };
 
   console.log(
-    `[sheets-sync] done — income +${income.added}/${income.skipped} skip, ` +
-    `expenses +${expense.added}/${expense.skipped} skip, ${result.total.errors} parse errors`,
+    `[sheets-sync] done — income +${income.added}/${income.skipped} skip (${income.errors} err), ` +
+    `expenses +${expense.added}/${expense.skipped} skip (${expense.errors} err)`,
   );
 
   return result;
 }
 
-module.exports = { runSync, isConfigured, excelSerialToDate, mapCategory };
+module.exports = { runSync, isConfigured, excelSerialToDate, mapCategory, parseDateCell, parseAmount };
