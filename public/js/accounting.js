@@ -330,7 +330,8 @@ function initAccountingMonthFilter() {
   const opts = [];
   for (let i = 0; i < 13; i++) {
     const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const val = d.toISOString().slice(0, 7);
+    // Use local year/month to avoid UTC offset shifting the month back by one day
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const lbl = d.toLocaleDateString('lt-LT', { year: 'numeric', month: 'long' });
     opts.push(`<option value="${val}"${i === 0 ? ' selected' : ''}>${lbl}</option>`);
   }
