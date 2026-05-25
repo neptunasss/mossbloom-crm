@@ -42,9 +42,11 @@ router.get('/', requireAuth, (req, res) => {
 // Sync all stores from WooCommerce
 router.post('/sync', requireAuth, async (req, res) => {
   const results = [];
+  console.log('[sync] starting sync for', stores.map(s => `${s.id}(url=${s.url},key=${s.key ? 'set' : 'MISSING'})`).join(', '));
 
   for (const store of stores) {
     if (!store.url || !store.key || !store.secret) {
+      console.error(`[sync] ${store.id} skipped — missing env vars (url=${store.url}, key=${store.key ? 'set' : 'MISSING'}, secret=${store.secret ? 'set' : 'MISSING'})`);
       results.push({ store: store.id, name: store.name, status: 'skipped', reason: 'not configured' });
       continue;
     }
@@ -116,6 +118,7 @@ router.post('/sync', requireAuth, async (req, res) => {
 
       results.push({ store: store.id, name: store.name, status: 'success', count: orders.length });
     } catch (err) {
+      console.error(`[sync] ${store.id} error: ${err.message}`, err.stack);
       db.prepare('INSERT INTO sync_log (store_id, status, error_message) VALUES (?, ?, ?)')
         .run(store.id, 'error', err.message);
 
