@@ -211,41 +211,38 @@ function manualAndOtherIncome(entries, rate) {
   return sum;
 }
 
-function storeIncome(db, entries, storeId, from, to, rate) {
+function storeIncome(entries, storeId, rate) {
   if (storeId === 'b2b') {
     return b2bIncome(entries, rate).incomeEUR;
   }
 
-  const fromCache = wcIncomeFromCache(db, storeId, from, to, rate);
-  if (fromCache > 0) return fromCache;
-
-  let fromAcct = 0;
+  let sum = 0;
   for (const e of entries) {
     if (e.type !== 'income') continue;
-    if (e.source === 'woocommerce' && storeKeyFromEntry(e) === storeId) {
-      fromAcct += fx.toEur(e.amount, e.currency, rate);
+    if (e.source === 'woocommerce' && e.store_id === storeId) {
+      sum += fx.toEur(e.amount, e.currency, rate);
     }
   }
-  return fromAcct + sandoriaiIncome(entries, storeId, rate);
+  return sum + sandoriaiIncome(entries, storeId, rate);
 }
 
-function storeOrderCount(db, entries, storeId, from, to) {
+function storeOrderCount(entries, storeId) {
   if (storeId === 'b2b') return b2bIncome(entries, 1).orders;
-  return wcOrdersInPeriod(db, storeId, from, to);
+  return entries.filter(e => e.type === 'income' && e.source === 'woocommerce' && e.store_id === storeId).length;
 }
 
 function aggregateEntries(db, entries, from, to, rate) {
   let expensesEUR = 0;
+  let incomeEUR   = 0;
+  let orderCount  = 0;
+
   for (const e of entries) {
-    if (e.type === 'expense') expensesEUR += fx.toEur(e.amount, e.currency, rate);
-  }
-
-  let incomeEUR = 0;
-  let orderCount = 0;
-
-  for (const sid of WC_STORES) {
-    incomeEUR  += wcIncomeFromCache(db, sid, from, to, rate);
-    orderCount += wcOrdersInPeriod(db, sid, from, to);
+    if (e.type === 'expense') {
+      expensesEUR += fx.toEur(e.amount, e.currency, rate);
+    } else if (e.type === 'income' && e.source === 'woocommerce') {
+      incomeEUR += fx.toEur(e.amount, e.currency, rate);
+      orderCount++;
+    }
   }
 
   incomeEUR += sandoriaiIncome(entries, null, rate);
@@ -271,9 +268,9 @@ function buildStoreBreakdown(db, currentEntries, prevEntries, rate, period, prev
   const prevAll = aggregateEntries(db, prevEntries, prevPeriod.from, prevPeriod.to, rate);
 
   const rows = STORE_ROWS.map(row => {
-    const incomeEUR = storeIncome(db, currentEntries, row.id, period.from, period.to, rate);
-    const prevIncome = storeIncome(db, prevEntries, row.id, prevPeriod.from, prevPeriod.to, rate);
-    const orders = storeOrderCount(db, currentEntries, row.id, period.from, period.to);
+    const incomeEUR  = storeIncome(currentEntries, row.id, rate);
+    const prevIncome = storeIncome(prevEntries, row.id, rate);
+    const orders     = storeOrderCount(currentEntries, row.id);
 
     return {
       id: row.id,
@@ -349,8 +346,11 @@ function buildChartMonths(db, rate) {
     const agg = aggregateEntries(db, entries, from, to, rate);
 
     const stores = { bloom_lt: 0, mossbloom_dk: 0, mossbloom_de: 0, b2b: 0 };
-    for (const sid of WC_STORES) {
-      stores[sid] = wcIncomeFromCache(db, sid, from, to, rate);
+    for (const e of entries) {
+      if (e.type !== 'income') continue;
+      if (e.source === 'woocommerce' && stores[e.store_id] !== undefined) {
+        stores[e.store_id] += fx.toEur(e.amount, e.currency, rate);
+      }
     }
     stores.b2b = b2bIncome(entries, rate).incomeEUR;
 
