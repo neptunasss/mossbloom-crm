@@ -4,6 +4,7 @@ const STORES = {
   bloom_lt:     { color: '#2ea043', name: 'bloom.lt',     label: 'LT' },
   mossbloom_dk: { color: '#1f6feb', name: 'mossbloom.dk', label: 'DK' },
   mossbloom_de: { color: '#da3633', name: 'mossbloom.de', label: 'DE' },
+  b2b:          { color: '#7c3aed', name: 'B2B',          label: 'B2B' },
 };
 
 const STATUS_STYLE = {
@@ -64,6 +65,7 @@ function switchView(view) {
   document.body.classList.toggle('acct-mode', view === 'accounting');
 
   document.getElementById('sync-btn').hidden     = view !== 'orders';
+  document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
   document.getElementById('header-count').hidden = view === 'calculator';
 
@@ -111,6 +113,7 @@ function renderOrders(orders) {
   empty.hidden = true;
 
   tbody.innerHTML = orders.map(o => {
+    const isB2b  = !!o.is_b2b;
     const store  = STORES[o.store_id] || { color: '#888', label: '?', name: o.store_id };
     const status = STATUS_STYLE[o.status] || { bg: '#f1f5f9', text: '#475569' };
     const prod   = PROD_STATUS[o.producer_status];
@@ -123,19 +126,25 @@ function renderOrders(orders) {
       : esc(o.customer_name || '—');
 
     const ps = o.producer_status || '';
-    const prodBadge = prod
-      ? `<span class="prod-badge" style="background:${prod.bg};color:${prod.text};cursor:pointer" title="Keisti statusą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'${ps}')">${prod.icon} ${ps}</span>`
-      : `<span class="prod-none" style="cursor:pointer" title="Pradėti gamybą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'')">—</span>`;
+    const prodBadge = isB2b
+      ? `<span class="prod-none">—</span>`
+      : prod
+        ? `<span class="prod-badge" style="background:${prod.bg};color:${prod.text};cursor:pointer" title="Keisti statusą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'${ps}')">${prod.icon} ${ps}</span>`
+        : `<span class="prod-none" style="cursor:pointer" title="Pradėti gamybą" onclick="cycleProducerStatus('${esc(o.store_id)}',${o.order_id},'')">—</span>`;
 
-    return `<tr>
+    const orderNum = isB2b
+      ? `<span class="b2b-order-badge">B2B</span>`
+      : `#${o.order_id}`;
+
+    return `<tr class="${isB2b ? 'b2b-row' : ''}">
       <td style="border-left:3px solid ${store.color};padding-left:11px">
         <span class="store-badge" style="background:${store.color}1a;color:${store.color};border:1px solid ${store.color}40">
           ${store.label}
         </span>
       </td>
-      <td class="col-order">#${o.order_id}</td>
+      <td class="col-order">${orderNum}</td>
       <td class="col-customer">${customerCell}</td>
-      <td class="col-email">${esc(o.customer_email || '')}</td>
+      <td class="col-email">${esc(o.customer_email || (isB2b && o.description ? o.description : ''))}</td>
       <td class="col-date">${date}</td>
       <td><span class="status-badge" style="background:${status.bg};color:${status.text}">${esc(o.status)}</span></td>
       <td>${prodBadge}</td>
@@ -152,6 +161,35 @@ function renderOrders(orders) {
   tbody.querySelectorAll('.customer-link').forEach(el => {
     el.addEventListener('click', () => openCustomerPanel(el.dataset.email));
   });
+}
+
+// ── B2B Order Modal ───────────────────────────────────────────────────────────
+
+function openB2bModal() {
+  const form = document.getElementById('b2b-form');
+  form.reset();
+  form.elements['order_date'].value = new Date().toISOString().slice(0, 10);
+  document.getElementById('b2b-modal').hidden = false;
+}
+
+function closeB2bModal() {
+  document.getElementById('b2b-modal').hidden = true;
+}
+
+async function saveB2bOrder() {
+  const form = document.getElementById('b2b-form');
+  if (!form.reportValidity()) return;
+  const fd   = new FormData(form);
+  const data = Object.fromEntries(fd.entries());
+  data.has_invoice = form.elements['has_invoice'].checked ? 1 : 0;
+  try {
+    await api('/api/orders/b2b', { method: 'POST', body: JSON.stringify(data) });
+    toast('B2B užsakymas išsaugotas');
+    closeB2bModal();
+    await loadOrders();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
 }
 
 // ── Sync ──────────────────────────────────────────────────────────────────────
@@ -318,6 +356,7 @@ function setupListeners() {
   });
 
   document.getElementById('sync-btn').addEventListener('click', syncOrders);
+  document.getElementById('new-b2b-btn').addEventListener('click', openB2bModal);
 
   document.getElementById('logout-btn').addEventListener('click', async () => {
     await api('/api/auth/logout', { method: 'POST' });

@@ -595,6 +595,20 @@ body {
 }
 .prod-none { color: var(--text-muted); font-size: 13px; }
 
+.b2b-row { background: rgba(124,58,237,0.04); }
+.b2b-row:hover { background: rgba(124,58,237,0.08) !important; }
+.b2b-order-badge {
+  display: inline-block;
+  background: rgba(124,58,237,0.15);
+  color: #7c3aed;
+  border: 1px solid rgba(124,58,237,0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  letter-spacing: 0.5px;
+}
+
 /* ══════════════════════════════════════════════════════
    Customer Panel (right drawer)
 ══════════════════════════════════════════════════════ */

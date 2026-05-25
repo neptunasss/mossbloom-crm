@@ -5,38 +5,106 @@ const db = require('../database');
 const { stores, fetchAllStoreOrders } = require('../services/woocommerce');
 const telegram = require('../services/telegram');
 
-// List orders from local cache
+// List orders — WooCommerce cache + B2B manual orders
 router.get('/', requireAuth, (req, res) => {
   const { store, status, search, limit = 300, offset = 0 } = req.query;
 
-  let query = `
-    SELECT store_id, order_id, customer_name, customer_email,
-           status, total, currency, date_created, producer_status
-    FROM orders_cache WHERE 1=1
-  `;
-  const params = [];
+  // WC orders
+  let wcOrders = [];
+  if (!store || store === 'all' || store !== 'b2b') {
+    let query = `
+      SELECT store_id, order_id, customer_name, customer_email,
+             status, total, currency, date_created, producer_status
+      FROM orders_cache WHERE 1=1
+    `;
+    const params = [];
 
-  if (store && store !== 'all') {
-    query += ' AND store_id = ?';
-    params.push(store);
+    if (store && store !== 'all') {
+      query += ' AND store_id = ?';
+      params.push(store);
+    }
+    if (status && status !== 'all') {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+    if (search) {
+      query += ' AND (customer_name LIKE ? OR customer_email LIKE ? OR CAST(order_id AS TEXT) LIKE ?)';
+      const s = `%${search}%`;
+      params.push(s, s, s);
+    }
+
+    query += ' ORDER BY date_created DESC';
+    wcOrders = db.prepare(query).all(...params);
   }
-  if (status && status !== 'all') {
-    query += ' AND status = ?';
-    params.push(status);
+
+  // B2B manual orders
+  let b2bOrders = [];
+  const includeB2b = !store || store === 'all' || store === 'b2b';
+  const statusOk   = !status || status === 'all' || status === 'completed';
+  if (includeB2b && statusOk) {
+    let b2bQuery  = 'SELECT * FROM b2b_orders WHERE 1=1';
+    const b2bArgs = [];
+    if (search) {
+      b2bQuery += ' AND (customer_name LIKE ? OR description LIKE ?)';
+      const s = `%${search}%`;
+      b2bArgs.push(s, s);
+    }
+    b2bQuery += ' ORDER BY order_date DESC';
+    b2bOrders = db.prepare(b2bQuery).all(...b2bArgs).map(o => ({
+      store_id:      'b2b',
+      order_id:      o.id,
+      customer_name: o.customer_name,
+      customer_email: '',
+      status:        'completed',
+      total:         String(o.amount),
+      currency:      o.currency || 'EUR',
+      date_created:  o.order_date + 'T00:00:00',
+      producer_status: null,
+      is_b2b:        true,
+      description:   o.description,
+      has_invoice:   o.has_invoice,
+    }));
   }
-  if (search) {
-    query += ' AND (customer_name LIKE ? OR customer_email LIKE ? OR CAST(order_id AS TEXT) LIKE ?)';
-    const s = `%${search}%`;
-    params.push(s, s, s);
+
+  const allOrders = [...b2bOrders, ...wcOrders].sort((a, b) =>
+    b.date_created.localeCompare(a.date_created)
+  );
+
+  const total   = allOrders.length;
+  const sliced  = allOrders.slice(Number(offset), Number(offset) + Number(limit));
+  res.json({ orders: sliced, total });
+});
+
+// Create a new B2B manual order
+router.post('/b2b', requireAuth, (req, res) => {
+  const { customer_name, amount, description, has_invoice, order_date } = req.body;
+
+  if (!customer_name || !amount || !order_date) {
+    return res.status(400).json({ error: 'customer_name, amount ir order_date privalomi' });
+  }
+  const amt = parseFloat(amount);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    return res.status(400).json({ error: 'Netinkama suma' });
   }
 
-  query += ' ORDER BY date_created DESC LIMIT ? OFFSET ?';
-  params.push(Number(limit), Number(offset));
+  const notes = has_invoice ? 'SF išrašyta' : '';
+  const desc  = description || customer_name;
 
-  const orders = db.prepare(query).all(...params);
-  const { cnt: total } = db.prepare('SELECT COUNT(*) as cnt FROM orders_cache').get();
+  const acctResult = db.prepare(`
+    INSERT INTO accounting_entries
+      (type, source, store_id, description, amount, currency, entry_date, category, notes)
+    VALUES ('income', 'b2b', 'b2b', ?, ?, 'EUR', ?, 'Pardavimai', ?)
+  `).run(desc, amt, order_date, notes);
 
-  res.json({ orders, total });
+  const orderResult = db.prepare(`
+    INSERT INTO b2b_orders (customer_name, amount, currency, description, has_invoice, order_date, accounting_id)
+    VALUES (?, ?, 'EUR', ?, ?, ?, ?)
+  `).run(customer_name, amt, description || '', has_invoice ? 1 : 0, order_date, acctResult.lastInsertRowid);
+
+  res.status(201).json({
+    id: orderResult.lastInsertRowid,
+    customer_name, amount: amt, currency: 'EUR', description, has_invoice, order_date,
+  });
 });
 
 // Standalone sync function — used by the route AND by startup/interval auto-sync

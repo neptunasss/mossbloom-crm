@@ -106,6 +106,19 @@ try { db.exec('ALTER TABLE telegram_notifications ADD COLUMN reminded_at DATETIM
 try { db.exec("ALTER TABLE accounting_entries ADD COLUMN category TEXT DEFAULT 'Kita'"); } catch {}
 try { db.exec("ALTER TABLE accounting_entries ADD COLUMN notes TEXT DEFAULT ''"); } catch {}
 try { db.exec('ALTER TABLE order_files ADD COLUMN accounting_id INTEGER'); } catch {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS b2b_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_name TEXT NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    currency TEXT DEFAULT 'EUR',
+    description TEXT DEFAULT '',
+    has_invoice INTEGER DEFAULT 0,
+    order_date TEXT NOT NULL,
+    accounting_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+} catch {}
 // Back-fill category for auto-synced entries
 try { db.exec("UPDATE accounting_entries SET category='Pardavimai' WHERE source IN ('woocommerce','sandoriai') AND (category IS NULL OR category='Kita')"); } catch {}
 

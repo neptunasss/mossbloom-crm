@@ -3,7 +3,6 @@
 const { google } = require('googleapis');
 const db = require('../database');
 
-const SHEET_INCOME  = 'PAJAMOS 2026';
 const SHEET_EXPENSE = 'IŠLAIDOS 2026';
 
 const CRM_CATEGORIES = [
@@ -12,12 +11,6 @@ const CRM_CATEGORIES = [
 ];
 
 const CATEGORY_MAP = {
-  pardavimai: 'Pardavimai',
-  pajamos: 'Pardavimai',
-  income: 'Pardavimai',
-  b2b: 'Pardavimai',
-  wc: 'Pardavimai',
-  woocommerce: 'Pardavimai',
   žaliavos: 'Žaliavos',
   zaliavos: 'Žaliavos',
   materials: 'Žaliavos',
@@ -95,9 +88,9 @@ function excelSerialToDate(serial) {
   return parseDateCell(serial);
 }
 
-function mapCategory(tipas, entryType) {
+function mapCategory(tipas) {
   const raw = String(tipas || '').trim();
-  if (!raw) return entryType === 'income' ? 'Pardavimai' : 'Kita';
+  if (!raw) return 'Kita';
 
   if (CRM_CATEGORIES.includes(raw)) return raw;
 
@@ -108,20 +101,7 @@ function mapCategory(tipas, entryType) {
     if (key.includes(pattern)) return cat;
   }
 
-  return entryType === 'income' ? 'Pardavimai' : 'Kita';
-}
-
-function mapStoreId(tipas, entryType) {
-  const t = String(tipas || '').toLowerCase();
-  if (entryType === 'income') {
-    if (t.includes('b2b order') || (t.includes('b2b') && !t.includes('pardavimas'))) return '';
-    if (t.includes('mossbloom.dk') || t.includes('mossbloom_dk')) return 'mossbloom_dk';
-    if (t.includes('mossbloom.de') || t.includes('mossbloom_de')) return 'mossbloom_de';
-    if (t.includes('bloom.lt') || t.includes('bloom_lt') || t.includes('resellas') || t.includes('promiless')) {
-      return 'bloom_lt';
-    }
-  }
-  return '';
+  return 'Kita';
 }
 
 function slug(s) {
@@ -282,8 +262,8 @@ function processRows(rows, entryType, sheetKey, logPrefix) {
       continue;
     }
 
-    const category = mapCategory(tipas, entryType);
-    const storeId  = entryType === 'income' ? mapStoreId(tipas, entryType) : '';
+    const category = mapCategory(tipas);
+    const storeId  = '';
     const ref      = referenceId(sheetKey, entryType, entryDate, amount, tipas);
 
     if (existsStmt.get(ref)) {
@@ -381,54 +361,32 @@ async function runSync() {
   const tabs = await listSheetTabs(sheets);
   console.log('[sheets-sync] available tabs:', JSON.stringify(tabs));
 
-  const incomeTab  = resolveTabName(tabs, SHEET_INCOME,  ['pajamos', '2026']);
   const expenseTab = resolveTabName(tabs, SHEET_EXPENSE, ['islaidos', '2026']);
-
-  console.log(`[sheets-sync] income tab: "${incomeTab}"`);
   console.log(`[sheets-sync] expense tab: "${expenseTab}"`);
 
-  let incomeRows = [];
   let expenseRows = [];
-
-  try {
-    incomeRows = await readSheet(sheets, incomeTab);
-    console.log(`[sheets-sync] PAJAMOS: read ${incomeRows.length} rows`);
-  } catch (err) {
-    console.error(`[sheets-sync] PAJAMOS read failed:`, err.message);
-    throw err;
-  }
-
   try {
     expenseRows = await readSheet(sheets, expenseTab);
     console.log(`[sheets-sync] IŠLAIDOS: read ${expenseRows.length} rows`);
   } catch (err) {
     console.error(`[sheets-sync] IŠLAIDOS read failed (tab="${expenseTab}"):`, err.message);
-    console.error('[sheets-sync] tip: verify tab name matches exactly, including Š in IŠLAIDOS');
     throw err;
   }
 
-  const income  = processRows(incomeRows,  'income',  'pajamos',  '[sheets-sync][PAJAMOS]');
   const expense = processRows(expenseRows, 'expense', 'islaidos', '[sheets-sync][IŠLAIDOS]');
 
-  const result = {
+  console.log(`[sheets-sync] done — expenses +${expense.added}/${expense.skipped} skip (${expense.errors} err)`);
+
+  return {
     ok: true,
-    incomeTab,
     expenseTab,
-    income,
     expenses: expense,
     total: {
-      added:   income.added   + expense.added,
-      skipped: income.skipped + expense.skipped,
-      errors:  income.errors  + expense.errors,
+      added:   expense.added,
+      skipped: expense.skipped,
+      errors:  expense.errors,
     },
   };
-
-  console.log(
-    `[sheets-sync] done — income +${income.added}/${income.skipped} skip (${income.errors} err), ` +
-    `expenses +${expense.added}/${expense.skipped} skip (${expense.errors} err)`,
-  );
-
-  return result;
 }
 
-module.exports = { runSync, isConfigured, excelSerialToDate, mapCategory, parseDateCell, parseAmount };
+module.exports = { runSync, isConfigured, excelSerialToDate, parseDateCell, parseAmount };

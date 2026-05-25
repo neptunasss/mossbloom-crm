@@ -11,6 +11,7 @@ const SOURCE_BADGE = {
   woocommerce:    '<span class="acct-badge acct-badge-wc">WC</span>',
   sandoriai:      '<span class="acct-badge acct-badge-sa">S</span>',
   b2b_import:     '<span class="acct-badge acct-badge-b2b">B2B</span>',
+  b2b:            '<span class="acct-badge acct-badge-b2b">B2B</span>',
   google_sheets:  '<span class="acct-badge acct-badge-gs">GS</span>',
   manual:         '',
 };
@@ -300,7 +301,7 @@ function renderStoreBreakdown(stores) {
 
 function storeBadge(entry) {
   const key = entry.storeKey || entry.store_id;
-  if (entry.source === 'b2b_import' || (entry.source === 'google_sheets' && key === 'b2b')) {
+  if (entry.source === 'b2b_import' || entry.source === 'b2b' || key === 'b2b') {
     return '<span class="acct-store-pill">B2B</span>';
   }
   const s = ACCT_STORE[key];
@@ -408,12 +409,8 @@ async function syncSheetsAccounting() {
         : 'Sinchronizacija praleista', 'error');
       return;
     }
-    const inc = results.income;
     const exp = results.expenses;
-    toast(
-      `Sheets: pajamos +${inc.added}, išlaidos +${exp.added} ` +
-      `(${inc.skipped + exp.skipped} jau yra)`,
-    );
+    toast(`Sheets: išlaidos +${exp.added} (${exp.skipped} jau yra)`);
     await loadAccounting(true);
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');

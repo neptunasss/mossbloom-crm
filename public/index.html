@@ -89,6 +89,7 @@
           </svg>
           <span id="sync-label">Sync</span>
         </button>
+        <button id="new-b2b-btn" class="btn-primary" hidden>+ B2B Order</button>
         <button id="new-deal-btn" class="btn-primary" hidden>+ New Deal</button>
       </div>
     </header>
@@ -108,6 +109,9 @@
             </button>
             <button class="tab-btn" data-store="mossbloom_de">
               <span class="tab-dot" style="background:#da3633"></span>mossbloom.de
+            </button>
+            <button class="tab-btn" data-store="b2b">
+              <span class="tab-dot" style="background:#7c3aed"></span>B2B
             </button>
           </div>
           <div class="filter-controls">
@@ -630,6 +634,48 @@
         <input type="file" id="file-upload-input" hidden accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="uploadFile(this)">
       </label>
       <button class="btn-secondary" onclick="closeFileModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── B2B Order Modal ── -->
+<div id="b2b-modal" class="modal-overlay" hidden>
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3>Naujas B2B užsakymas</h3>
+      <button class="btn-icon" onclick="closeB2bModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="b2b-form" onsubmit="return false">
+        <div class="form-group">
+          <label>Klientas *</label>
+          <input type="text" name="customer_name" required placeholder="Įmonės pavadinimas">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Suma (EUR) *</label>
+            <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Data *</label>
+            <input type="date" name="order_date" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Aprašymas</label>
+          <input type="text" name="description" placeholder="Trumpas aprašymas">
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:4px">
+          <input type="checkbox" name="has_invoice" id="b2b-has-invoice" style="width:auto;margin:0">
+          <label for="b2b-has-invoice" style="margin:0;font-weight:normal">SF išrašyta</label>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeB2bModal()">Atšaukti</button>
+      <button class="btn-primary" onclick="saveB2bOrder()">Išsaugoti</button>
     </div>
   </div>
 </div>

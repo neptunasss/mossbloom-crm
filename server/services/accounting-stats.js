@@ -127,43 +127,14 @@ function entryText(entry) {
   return `${entry.description || ''} ${entry.notes || ''} ${entry.category || ''}`.toUpperCase();
 }
 
-/** B2B from import or Google Sheets PAJAMOS B2B lines */
+/** B2B manual orders or legacy b2b_import */
 function isB2bEntry(entry) {
   if (entry.type !== 'income') return false;
-  if (entry.source === 'b2b_import') return true;
-  if (entry.source === 'google_sheets') {
-    const t = entryText(entry);
-    return t.includes('B2B ORDER') || (t.includes('B2B') && !t.includes('PARDAVIMAS'));
-  }
-  return false;
-}
-
-/** PAJAMOS sheet lines that duplicate WooCommerce store sales */
-function isSheetsWcSale(entry) {
-  if (entry.source !== 'google_sheets' || entry.type !== 'income') return false;
-  if (isB2bEntry(entry)) return false;
-  const t = entryText(entry);
-  return t.includes('PARDAVIMAS') || t.includes('MOSSBLOOM.') || t.includes('BLOOM.LT') || t.includes('RESELLAS');
+  return entry.source === 'b2b_import' || entry.source === 'b2b';
 }
 
 function storeKeyFromEntry(entry) {
   if (isB2bEntry(entry)) return 'b2b';
-
-  if (entry.source === 'woocommerce' || entry.source === 'sandoriai') {
-    if (entry.store_id === 'bloom_lt') return 'bloom_lt';
-    if (entry.store_id === 'mossbloom_dk') return 'mossbloom_dk';
-    if (entry.store_id === 'mossbloom_de') return 'mossbloom_de';
-    return null;
-  }
-
-  if (entry.source === 'google_sheets' && entry.type === 'income') {
-    const t = entryText(entry);
-    if (t.includes('MOSSBLOOM.DK') || t.includes('MOSSBLOOM_DK')) return 'mossbloom_dk';
-    if (t.includes('MOSSBLOOM.DE') || t.includes('MOSSBLOOM_DE')) return 'mossbloom_de';
-    if (t.includes('BLOOM.LT') || t.includes('BLOOM_LT') || t.includes('RESELLAS') || t.includes('PROMILESS')) {
-      return 'bloom_lt';
-    }
-  }
 
   if (entry.store_id === 'bloom_lt') return 'bloom_lt';
   if (entry.store_id === 'mossbloom_dk') return 'mossbloom_dk';
@@ -234,8 +205,7 @@ function manualAndOtherIncome(entries, rate) {
   let sum = 0;
   for (const e of entries) {
     if (e.type !== 'income') continue;
-    if (['woocommerce', 'sandoriai', 'b2b_import', 'google_sheets'].includes(e.source)) continue;
-    if (isSheetsWcSale(e)) continue;
+    if (['woocommerce', 'sandoriai', 'b2b_import', 'b2b', 'google_sheets'].includes(e.source)) continue;
     sum += fx.toEur(e.amount, e.currency, rate);
   }
   return sum;
@@ -256,15 +226,7 @@ function storeIncome(db, entries, storeId, from, to, rate) {
       fromAcct += fx.toEur(e.amount, e.currency, rate);
     }
   }
-  if (fromAcct > 0) return fromAcct;
-
-  let fromSheets = 0;
-  for (const e of entries) {
-    if (e.source === 'google_sheets' && storeKeyFromEntry(e) === storeId && isSheetsWcSale(e)) {
-      fromSheets += fx.toEur(e.amount, e.currency, rate);
-    }
-  }
-  return fromSheets + sandoriaiIncome(entries, storeId, rate);
+  return fromAcct + sandoriaiIncome(entries, storeId, rate);
 }
 
 function storeOrderCount(db, entries, storeId, from, to) {
@@ -467,6 +429,5 @@ module.exports = {
   storeKeyFromEntry,
   matchesStoreFilter,
   isB2bEntry,
-  isSheetsWcSale,
   buildDashboard,
 };
