@@ -397,11 +397,43 @@ async function buildDashboard(db, query) {
     avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     monthlySparkline(db, 'avg',      period.from, period.to, rate)),
   };
 
-  let entries = currentAll.map(e => ({
-    ...e,
-    amountEUR: fx.toEur(e.amount, e.currency, rate),
-    storeKey:  storeKeyFromEntry(e) || e.store_id || '',
-  }));
+  // WooCommerce orders for the period mapped to entry shape
+  const wcRows = db.prepare(`
+    SELECT store_id, order_id, customer_name, total, currency, date_created, status
+    FROM orders_cache
+    WHERE substr(date_created, 1, 10) >= ? AND substr(date_created, 1, 10) <= ?
+      AND status NOT IN ('cancelled','refunded','failed')
+    ORDER BY date_created DESC
+  `).all(period.from, period.to);
+
+  const wcEntries = wcRows.map(o => {
+    const amount    = parseFloat(o.total) || 0;
+    const amountEUR = fx.toEur(amount, o.currency, rate);
+    return {
+      id:          `wc-${o.store_id}-${o.order_id}`,
+      type:        'income',
+      source:      'woocommerce',
+      store_id:    o.store_id,
+      reference_id: String(o.order_id),
+      description: `#${o.order_id} — ${o.customer_name || ''}`.trim().replace(/— $/, ''),
+      amount,
+      currency:    o.currency,
+      entry_date:  o.date_created.slice(0, 10),
+      category:    'Pardavimai',
+      notes:       o.status,
+      amountEUR,
+      storeKey:    o.store_id,
+    };
+  });
+
+  let entries = [
+    ...wcEntries,
+    ...currentAll.map(e => ({
+      ...e,
+      amountEUR: fx.toEur(e.amount, e.currency, rate),
+      storeKey:  storeKeyFromEntry(e) || e.store_id || '',
+    })),
+  ].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
 
   const { type, category, store_id } = query;
   if (type)     entries = entries.filter(e => e.type === type);
