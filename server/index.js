@@ -36,6 +36,30 @@ app.listen(PORT, () => {
   const pwd = process.env.ADMIN_PASSWORD || 'mossbloom2024';
   console.log(`\nMossbloom CRM → http://localhost:${PORT}`);
   console.log(`Login: admin / ${pwd}`);
+
+  // ENV CHECK — printed on every startup so Railway logs show config state
+  console.log('\n── ENV CHECK ──────────────────────────────────');
+  const envCheck = [
+    ['BLOOM_LT_URL',        process.env.BLOOM_LT_URL],
+    ['BLOOM_LT_KEY',        process.env.BLOOM_LT_KEY],
+    ['BLOOM_LT_SECRET',     process.env.BLOOM_LT_SECRET],
+    ['MOSSBLOOM_DK_URL',    process.env.MOSSBLOOM_DK_URL],
+    ['MOSSBLOOM_DK_KEY',    process.env.MOSSBLOOM_DK_KEY],
+    ['MOSSBLOOM_DK_SECRET', process.env.MOSSBLOOM_DK_SECRET],
+    ['MOSSBLOOM_DE_URL',    process.env.MOSSBLOOM_DE_URL],
+    ['MOSSBLOOM_DE_KEY',    process.env.MOSSBLOOM_DE_KEY],
+    ['MOSSBLOOM_DE_SECRET', process.env.MOSSBLOOM_DE_SECRET],
+    ['SESSION_SECRET',      process.env.SESSION_SECRET],
+    ['ADMIN_PASSWORD',      process.env.ADMIN_PASSWORD],
+    ['TELEGRAM_BOT_TOKEN',  process.env.TELEGRAM_BOT_TOKEN],
+  ];
+  for (const [name, val] of envCheck) {
+    const display = name.endsWith('_SECRET') || name.endsWith('_KEY') || name === 'SESSION_SECRET' || name === 'ADMIN_PASSWORD'
+      ? (val ? `SET (${val.length} chars)` : 'MISSING ⚠️')
+      : (val || 'MISSING ⚠️');
+    console.log(`  ${name.padEnd(22)} = ${display}`);
+  }
+  console.log('───────────────────────────────────────────────\n');
   if (telegram.configured) {
     telegram.startPolling();
     telegram.startReminderCheck();
