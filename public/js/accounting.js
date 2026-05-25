@@ -8,10 +8,11 @@ const ACCT_STORE = {
 };
 
 const SOURCE_BADGE = {
-  woocommerce: '<span class="acct-badge acct-badge-wc">WC</span>',
-  sandoriai:   '<span class="acct-badge acct-badge-sa">S</span>',
-  b2b_import:  '<span class="acct-badge acct-badge-b2b">B2B</span>',
-  manual:      '',
+  woocommerce:    '<span class="acct-badge acct-badge-wc">WC</span>',
+  sandoriai:      '<span class="acct-badge acct-badge-sa">S</span>',
+  b2b_import:     '<span class="acct-badge acct-badge-b2b">B2B</span>',
+  google_sheets:  '<span class="acct-badge acct-badge-gs">GS</span>',
+  manual:         '',
 };
 
 const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
@@ -112,6 +113,9 @@ function fmtStatValue(val, fmt) {
 }
 
 function renderChange(pct, cls) {
+  if (pct == null) {
+    return `<span class="acct-stat-change neutral">— vs ${prevPeriodLabel()}</span>`;
+  }
   const up   = pct >= 0;
   const sign = up ? '+' : '';
   const colorCls = cls === 'expense'
@@ -119,6 +123,14 @@ function renderChange(pct, cls) {
     : (up ? 'up' : 'down');
   const arrow = up ? '↑' : '↓';
   return `<span class="acct-stat-change ${colorCls}">${arrow} ${sign}${Math.abs(pct).toFixed(1)}% vs ${prevPeriodLabel()}</span>`;
+}
+
+function renderStoreChange(pct) {
+  if (pct == null) return '<span class="acct-stat-change neutral">—</span>';
+  const up = pct >= 0;
+  const sign = up ? '+' : '';
+  const chgCls = up ? 'up' : 'down';
+  return `<span class="acct-stat-change ${chgCls}">${sign}${pct.toFixed(1)}%</span>`;
 }
 
 function sparklineSvg(values, color) {
@@ -146,13 +158,18 @@ function renderStats(stats) {
     const s   = stats[card.key] || { value: 0, changePct: 0, sparkline: [] };
     const col = card.cls === 'neutral' ? 'neutral' : card.cls;
     const sparkColor = SPARK_COLORS[col] || SPARK_COLORS.neutral;
+    const isZeroExpenses = card.key === 'expenses' && (s.value == null || s.value === 0);
+    const expenseHint = isZeroExpenses
+      ? '<div class="acct-stat-hint">Pridėkite išlaidas rankiniu būdu</div>'
+      : '';
     return `
-      <div class="acct-stat-card acct-stat-${col}">
+      <div class="acct-stat-card acct-stat-${col}${isZeroExpenses ? ' acct-stat-empty' : ''}">
         <div class="acct-stat-top">
           <span class="acct-stat-label">${card.label}</span>
           ${sparklineSvg(s.sparkline, sparkColor)}
         </div>
         <div class="acct-stat-value">${fmtStatValue(s.value, card.fmt)}</div>
+        ${expenseHint}
         ${renderChange(s.changePct, card.cls)}
       </div>`;
   }).join('');
@@ -269,16 +286,13 @@ function renderStoreBreakdown(stores) {
 
   tbody.innerHTML = stores.map(row => {
     const isTotal = row.id === 'total';
-    const chg     = row.changePct;
-    const chgCls  = chg >= 0 ? 'up' : 'down';
-    const chgSign = chg >= 0 ? '+' : '';
     const storeColor = ACCT_STORE[row.id]?.color || '#9ca3af';
     return `<tr class="${isTotal ? 'acct-row-total' : ''}">
       <td><span class="acct-store-dot" style="background:${storeColor}"></span>${esc(row.name)}</td>
       <td class="num">${row.orders}</td>
       <td class="num acct-val-income">${fmtEUR(row.incomeEUR)}</td>
       <td class="num">${row.pctOfTotal.toFixed(1)}%</td>
-      <td class="num"><span class="acct-stat-change ${chgCls}">${chgSign}${chg.toFixed(1)}%</span></td>
+      <td class="num">${renderStoreChange(row.changePct)}</td>
     </tr>`;
   }).join('');
 }
@@ -372,6 +386,35 @@ async function syncAccounting() {
     if (wc.added) parts.push(`WC: +${wc.added}`);
     if (sa.added) parts.push(`Sandoriai: +${sa.added}`);
     if (parts.length) toast(parts.join(' · '));
+    await loadAccounting(true);
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    if (icon) icon.style.animation = '';
+  }
+}
+
+async function syncSheetsAccounting() {
+  const btn  = document.getElementById('acct-sheets-sync-btn');
+  const icon = document.getElementById('acct-sheets-sync-icon');
+  btn.disabled = true;
+  if (icon) icon.style.animation = 'acct-spin 0.9s linear infinite';
+
+  try {
+    const { results } = await api('/api/accounting/sync-sheets', { method: 'POST' });
+    if (!results.ok) {
+      toast(results.reason === 'not_configured'
+        ? 'Google Sheets neprijungta (trūksta ENV)'
+        : 'Sinchronizacija praleista', 'error');
+      return;
+    }
+    const inc = results.income;
+    const exp = results.expenses;
+    toast(
+      `Sheets: pajamos +${inc.added}, išlaidos +${exp.added} ` +
+      `(${inc.skipped + exp.skipped} jau yra)`,
+    );
     await loadAccounting(true);
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');

@@ -117,7 +117,8 @@ function previousPeriod(from, to) {
 }
 
 function pctChange(current, previous) {
-  if (previous === 0) return current > 0 ? 100 : 0;
+  if (previous === 0 && current === 0) return 0;
+  if (previous === 0) return null;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
@@ -178,11 +179,12 @@ function aggregateByStore(entries, rate) {
 }
 
 function buildStoreBreakdown(currentEntries, prevEntries, rate) {
-  const cur  = aggregateByStore(currentEntries, rate);
-  const prev = aggregateByStore(prevEntries, rate);
-
-  const totalIncome = Object.values(cur).reduce((s, v) => s + v.incomeEUR, 0);
-  const totalOrders = Object.values(cur).reduce((s, v) => s + v.orders, 0);
+  const cur       = aggregateByStore(currentEntries, rate);
+  const prev      = aggregateByStore(prevEntries, rate);
+  const curAll    = aggregateEntries(currentEntries, rate);
+  const prevAll   = aggregateEntries(prevEntries, rate);
+  const totalIncome = curAll.incomeEUR;
+  const totalOrders = curAll.orderCount;
 
   const rows = STORE_ROWS.map(row => {
     const c = cur[row.id]  || { orders: 0, incomeEUR: 0 };
@@ -204,7 +206,7 @@ function buildStoreBreakdown(currentEntries, prevEntries, rate) {
     orders: totalOrders,
     incomeEUR: totalIncome,
     pctOfTotal: 100,
-    changePct: pctChange(totalIncome, Object.values(prev).reduce((s, v) => s + v.incomeEUR, 0)),
+    changePct: pctChange(curAll.incomeEUR, prevAll.incomeEUR),
   });
 
   return rows;

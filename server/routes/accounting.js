@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const db          = require('../database');
 const fx          = require('../services/fx');
 const stats       = require('../services/accounting-stats');
+const sheetsSync  = require('../services/sheets-sync');
 
 const STORE_NAME = {
   bloom_lt:     'bloom.lt',
@@ -148,6 +149,22 @@ router.get('/', requireAuth, async (req, res) => {
   }));
 
   res.json({ entries, total, rate });
+});
+
+// ── Sync Google Sheets (PAJAMOS / IŠLAIDOS) ───────────────────────────────────
+// POST /api/accounting/sync-sheets
+
+router.post('/sync-sheets', requireAuth, async (req, res) => {
+  if (!sheetsSync.isConfigured()) {
+    return res.status(400).json({ error: 'Google Sheets credentials not configured' });
+  }
+  try {
+    const result = await sheetsSync.runSync();
+    res.json({ results: result });
+  } catch (err) {
+    console.error('[sheets-sync] error:', err.message, err.stack);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Sync WooCommerce + Sandoriai ───────────────────────────────────────────────

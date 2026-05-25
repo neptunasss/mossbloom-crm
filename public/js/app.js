@@ -61,6 +61,7 @@ function switchView(view) {
 
   const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Apskaita', calculator: 'Quote Calculator' };
   document.getElementById('page-title').textContent = titles[view] || view;
+  document.body.classList.toggle('acct-mode', view === 'accounting');
 
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';

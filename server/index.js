@@ -54,6 +54,9 @@ app.listen(PORT, () => {
     ['SESSION_SECRET',      process.env.SESSION_SECRET],
     ['ADMIN_PASSWORD',      process.env.ADMIN_PASSWORD],
     ['TELEGRAM_BOT_TOKEN',  process.env.TELEGRAM_BOT_TOKEN],
+    ['GOOGLE_SHEET_ID',     process.env.GOOGLE_SHEET_ID],
+    ['GOOGLE_SERVICE_ACCOUNT_EMAIL', process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL],
+    ['GOOGLE_SERVICE_ACCOUNT_KEY', process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? `SET (${process.env.GOOGLE_SERVICE_ACCOUNT_KEY.length} chars)` : 'MISSING ⚠️'],
   ];
   for (const [name, val] of envCheck) {
     const display = name.endsWith('_SECRET') || name.endsWith('_KEY') || name === 'SESSION_SECRET' || name === 'ADMIN_PASSWORD'
@@ -70,19 +73,39 @@ app.listen(PORT, () => {
   }
   console.log('');
 
-  // Auto-sync: initial run 3s after startup, then every 30 minutes
-  async function autoSync(label) {
-    console.log(`[${label}] auto-sync starting...`);
+  const sheetsSync = require('./services/sheets-sync');
+
+  async function autoSyncWoo(label) {
+    console.log(`[${label}] WooCommerce sync starting...`);
     try {
       const results = await ordersModule.runSync();
       const total   = results.reduce((sum, r) => sum + (r.count || 0), 0);
       const summary = results.map(r => r.status === 'success' ? `${r.name}: ${r.count}` : `${r.name}: ${r.status}`).join(', ');
-      console.log(`[${label}] auto-sync complete: ${total} orders (${summary})`);
+      console.log(`[${label}] WooCommerce sync complete: ${total} orders (${summary})`);
     } catch (err) {
-      console.error(`[${label}] auto-sync failed:`, err.message);
+      console.error(`[${label}] WooCommerce sync failed:`, err.message);
     }
   }
 
-  setTimeout(() => autoSync('startup'), 3000);
-  setInterval(() => autoSync('auto-sync'), 30 * 60 * 1000);
+  async function autoSyncSheets(label) {
+    try {
+      const sheetResult = await sheetsSync.runSync();
+      if (sheetResult.ok) {
+        console.log(
+          `[${label}] Google Sheets sync complete: +${sheetResult.total.added} new, ` +
+          `${sheetResult.total.skipped} existing`,
+        );
+      }
+    } catch (err) {
+      console.error(`[${label}] Google Sheets sync failed:`, err.message);
+    }
+  }
+
+  setTimeout(async () => {
+    await autoSyncWoo('startup');
+    await autoSyncSheets('startup');
+  }, 3000);
+
+  setInterval(() => autoSyncWoo('auto-sync'), 30 * 60 * 1000);
+  setInterval(() => autoSyncSheets('sheets-sync'), 6 * 60 * 60 * 1000);
 });
