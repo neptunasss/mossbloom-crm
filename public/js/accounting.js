@@ -1,277 +1,395 @@
 'use strict';
 
-const ACCT_STORE_NAME = {
-  bloom_lt:     'bloom.lt',
-  mossbloom_dk: 'mossbloom.dk',
-  mossbloom_de: 'mossbloom.de',
+const ACCT_STORE = {
+  bloom_lt:     { name: 'bloom.lt',     color: '#22c55e' },
+  mossbloom_dk: { name: 'mossbloom.dk', color: '#3b82f6' },
+  mossbloom_de: { name: 'mossbloom.de', color: '#ef4444' },
+  b2b:          { name: 'B2B',          color: '#a855f7' },
 };
-const ACCT_STORE_COLOR = {
-  bloom_lt:     '#2ea043',
-  mossbloom_dk: '#1f6feb',
-  mossbloom_de: '#da3633',
-};
+
 const SOURCE_BADGE = {
-  woocommerce: '<span class="acct-src-badge acct-src-wc">WC</span>',
-  sandoriai:   '<span class="acct-src-badge acct-src-sa">S</span>',
+  woocommerce: '<span class="acct-badge acct-badge-wc">WC</span>',
+  sandoriai:   '<span class="acct-badge acct-badge-sa">S</span>',
+  b2b_import:  '<span class="acct-badge acct-badge-b2b">B2B</span>',
   manual:      '',
 };
 
-let acctChart     = null;
-let acctChartData = null;
-let acctChartCur  = 'EUR';
+const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
 
-// ── Load ──────────────────────────────────────────────────────────────────────
+const STAT_CARDS = [
+  { key: 'income',       label: 'Pajamos',            cls: 'income',  fmt: 'eur' },
+  { key: 'expenses',     label: 'Išlaidos',           cls: 'expense', fmt: 'eur' },
+  { key: 'profit',       label: 'Pelnas',             cls: 'profit',  fmt: 'eur' },
+  { key: 'profitMargin', label: 'Pelno marža',        cls: 'neutral', fmt: 'pct' },
+  { key: 'orderCount',   label: 'Užsakymų skaičius',  cls: 'neutral', fmt: 'int' },
+  { key: 'avgOrder',     label: 'Vidutinis užsakymas', cls: 'neutral', fmt: 'eur' },
+];
 
-async function loadAccounting() {
-  document.getElementById('acct-loading').hidden = false;
+let acctChart      = null;
+let acctChartData  = null;
+let acctChartMode  = 'eur';
+let acctEntries    = [];
+let acctSort       = { col: 'entry_date', dir: -1 };
+let acctPeriod     = 'this_month';
+let acctCustomFrom = '';
+let acctCustomTo   = '';
+let acctPeriodData = { from: '', to: '' };
+let acctLoading    = false;
 
-  const month    = document.getElementById('acct-month-filter').value;
-  const type     = document.getElementById('acct-type-filter').value;
-  const category = document.getElementById('acct-category-filter').value;
-  const storeId  = document.getElementById('acct-store-filter').value;
+// ── Period helpers ────────────────────────────────────────────────────────────
+
+function periodQuery() {
+  const p = new URLSearchParams({ period: acctPeriod });
+  if (acctPeriod === 'custom' && acctCustomFrom && acctCustomTo) {
+    p.set('from', acctCustomFrom);
+    p.set('to', acctCustomTo);
+  }
+  const type     = document.getElementById('acct-type-filter')?.value;
+  const category = document.getElementById('acct-category-filter')?.value;
+  const storeId  = document.getElementById('acct-store-filter')?.value;
+  if (type)     p.set('type', type);
+  if (category) p.set('category', category);
+  if (storeId)  p.set('store_id', storeId);
+  return p;
+}
+
+function prevPeriodLabel() {
+  const labels = {
+    this_month: 'praėjusį mėnesį',
+    last_month: 'ankstesnį mėnesį',
+    this_quarter: 'praėjusį ketvirtį',
+    last_quarter: 'ankstesnį ketvirtį',
+    this_year: 'praėjusius metus',
+    custom: 'ankstesnį laikotarpį',
+  };
+  return labels[acctPeriod] || 'ankstesnį laikotarpį';
+}
+
+// ── Load dashboard ────────────────────────────────────────────────────────────
+
+async function loadAccounting(silent = false) {
+  if (acctLoading) return;
+  acctLoading = true;
+  const loader = document.getElementById('acct-loading');
+  if (!silent) loader.hidden = false;
 
   try {
-    const p = new URLSearchParams({ month, limit: 300 });
-    if (type)     p.set('type',     type);
-    if (category) p.set('category', category);
-    if (storeId)  p.set('store_id', storeId);
+    const data = await api(`/api/accounting/dashboard?${periodQuery()}`);
+    acctPeriodData = data.period || acctPeriodData;
+    acctChartData = data.chart.months;
+    acctEntries   = data.entries;
 
-    const summaryP = new URLSearchParams({ month });
-    if (storeId) summaryP.set('store_id', storeId);
+    renderRatesNote(data.rate);
+    renderStats(data.stats);
+    renderChart(acctChartData);
+    renderStoreBreakdown(data.stores, data.period);
+    renderEntries(acctEntries);
 
-    const [summary, { entries }, chartData] = await Promise.all([
-      api(`/api/accounting/summary?${summaryP}`),
-      api(`/api/accounting?${p}`),
-      acctChartData ? Promise.resolve(null) : api('/api/accounting/chart'),
-    ]);
-
-    renderSummary(summary);
-    renderEntries(entries);
-
-    if (chartData) {
-      acctChartData = chartData.months;
-      renderChart(acctChartData);
-    }
-
-    document.getElementById('header-count').textContent = `${entries.length} įrašas(-ų)`;
+    document.getElementById('acct-stores-period').textContent = data.period.label || '';
+    document.getElementById('acct-tx-count').textContent =
+      `${data.total} sandorių · ${data.period.from} – ${data.period.to}`;
+    document.getElementById('header-count').textContent =
+      `${data.total} sandorių`;
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   } finally {
-    document.getElementById('acct-loading').hidden = true;
+    loader.hidden = true;
+    acctLoading = false;
   }
 }
 
-// ── Summary bar ───────────────────────────────────────────────────────────────
+// ── Stats cards ───────────────────────────────────────────────────────────────
 
-function renderSummary(data) {
-  const { incomeEUR = 0, expensesEUR = 0, profitEUR = 0, rate = 7.46 } = data;
-  const fmtEUR   = v => `€${parseFloat(v).toFixed(2)}`;
-  const profitCls = profitEUR >= 0 ? 'acct-profit-pos' : 'acct-profit-neg';
-
-  document.getElementById('acct-summary').innerHTML = `
-    <div class="acct-summary-card acct-income">
-      <div class="acct-summary-icon">📈</div>
-      <div class="acct-summary-body">
-        <div class="acct-summary-val">${fmtEUR(incomeEUR)}</div>
-        <div class="acct-summary-lbl">Pajamos šį mėnesį</div>
-      </div>
-    </div>
-    <div class="acct-summary-card acct-expense">
-      <div class="acct-summary-icon">📉</div>
-      <div class="acct-summary-body">
-        <div class="acct-summary-val">${fmtEUR(expensesEUR)}</div>
-        <div class="acct-summary-lbl">Išlaidos šį mėnesį</div>
-      </div>
-    </div>
-    <div class="acct-summary-card acct-profit">
-      <div class="acct-summary-icon">💼</div>
-      <div class="acct-summary-body">
-        <div class="acct-summary-val"><span class="${profitCls}">${fmtEUR(profitEUR)}</span></div>
-        <div class="acct-summary-lbl">Pelnas šį mėnesį</div>
-      </div>
-    </div>
-    <div style="grid-column:1/-1;text-align:right;font-size:11px;color:var(--text-muted);padding:2px 4px">
-      Kursas: 1 EUR = ${parseFloat(rate).toFixed(4)} DKK
-    </div>
-  `;
+function fmtEUR(v) {
+  return `€${parseFloat(v || 0).toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// ── Entries table ─────────────────────────────────────────────────────────────
+function fmtStatValue(val, fmt) {
+  if (fmt === 'eur') return fmtEUR(val);
+  if (fmt === 'pct') return `${parseFloat(val || 0).toFixed(1)}%`;
+  if (fmt === 'int') return String(Math.round(val || 0));
+  return String(val);
+}
 
-function renderEntries(entries) {
-  const tbody = document.getElementById('acct-tbody');
-  const empty = document.getElementById('acct-empty');
+function renderChange(pct, cls) {
+  const up   = pct >= 0;
+  const sign = up ? '+' : '';
+  const colorCls = cls === 'expense'
+    ? (up ? 'down' : 'up')
+    : (up ? 'up' : 'down');
+  const arrow = up ? '↑' : '↓';
+  return `<span class="acct-stat-change ${colorCls}">${arrow} ${sign}${Math.abs(pct).toFixed(1)}% vs ${prevPeriodLabel()}</span>`;
+}
 
-  if (!entries.length) {
-    tbody.innerHTML = '';
-    empty.hidden = false;
-    return;
-  }
-  empty.hidden = true;
+function sparklineSvg(values, color) {
+  if (!values || values.length < 2) return '';
+  const w = 72, h = 28, pad = 2;
+  const max = Math.max(...values, 0.01);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return `${x},${y}`;
+  }).join(' ');
+  return `<svg class="acct-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/></svg>`;
+}
 
-  tbody.innerHTML = entries.map(e => {
-    const isIncome  = e.type === 'income';
-    const rowCls    = isIncome ? 'acct-row-income' : 'acct-row-expense';
-    const amtCls    = isIncome ? 'acct-amount-income' : 'acct-amount-expense';
-    const amtPfx    = isIncome ? '+' : '−';
+const SPARK_COLORS = {
+  income: '#22c55e', expense: '#ef4444', profit: '#3b82f6',
+  neutral: '#60a5fa',
+};
 
-    const srcBadge  = SOURCE_BADGE[e.source] || '';
-    const notesHtml = e.notes ? `<div class="acct-entry-notes">${esc(e.notes)}</div>` : '';
-
-    const storeName  = ACCT_STORE_NAME[e.store_id]  || e.store_id  || '';
-    const storeColor = ACCT_STORE_COLOR[e.store_id] || '#888';
-    const storeBadge = storeName
-      ? `<span class="store-badge" style="background:${storeColor}1a;color:${storeColor};border:1px solid ${storeColor}40">${storeName}</span>`
-      : '<span style="color:var(--text-muted)">—</span>';
-
-    return `<tr class="${rowCls}">
-      <td class="col-date" style="white-space:nowrap">${fmtDate(e.entry_date)}</td>
-      <td>
-        <div class="acct-desc-wrap">
-          <span class="acct-desc-text">${esc(e.description)}</span>
-          ${srcBadge}
+function renderStats(stats) {
+  const grid = document.getElementById('acct-stats-grid');
+  grid.innerHTML = STAT_CARDS.map(card => {
+    const s   = stats[card.key] || { value: 0, changePct: 0, sparkline: [] };
+    const col = card.cls === 'neutral' ? 'neutral' : card.cls;
+    const sparkColor = SPARK_COLORS[col] || SPARK_COLORS.neutral;
+    return `
+      <div class="acct-stat-card acct-stat-${col}">
+        <div class="acct-stat-top">
+          <span class="acct-stat-label">${card.label}</span>
+          ${sparklineSvg(s.sparkline, sparkColor)}
         </div>
-        ${notesHtml}
-      </td>
-      <td><span class="acct-cat-badge">${esc(e.category || 'Kita')}</span></td>
-      <td>${storeBadge}</td>
-      <td class="col-total text-right ${amtCls}">${amtPfx}${fmtTotal(e.amount, e.currency)}</td>
-      <td class="col-actions">
-        <button class="btn-file" onclick="openFileModal(null,null,null,${e.id})" title="Failai">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-        </button>
-        <button class="btn-row-action btn-row-delete" onclick="deleteAcctEntry(${e.id})" title="Ištrinti">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-        </button>
-      </td>
-    </tr>`;
+        <div class="acct-stat-value">${fmtStatValue(s.value, card.fmt)}</div>
+        ${renderChange(s.changePct, card.cls)}
+      </div>`;
   }).join('');
 }
 
-// ── P&L chart ─────────────────────────────────────────────────────────────────
+function renderRatesNote(rate) {
+  const el = document.getElementById('acct-rates-note');
+  if (el) el.textContent = `1 EUR = ${parseFloat(rate || 7.46).toFixed(2)} DKK`;
+}
 
-const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
+// ── Chart ─────────────────────────────────────────────────────────────────────
+
+function setChartMode(mode) {
+  acctChartMode = mode;
+  document.getElementById('chart-mode-eur')?.classList.toggle('active', mode === 'eur');
+  document.getElementById('chart-mode-stores')?.classList.toggle('active', mode === 'stores');
+  if (acctChartData) renderChart(acctChartData);
+}
 
 function renderChart(months) {
-  if (!months || !window.Chart) return;
+  if (!months?.length || !window.Chart) return;
 
-  const labels   = months.map(m => {
+  const labels = months.map(m => {
     const [yr, mo] = m.month.split('-');
     return `${CHART_MONTHS[Number(mo) - 1]} '${yr.slice(2)}`;
   });
-  const income   = months.map(m => m.incomeEUR   || 0);
-  const expenses = months.map(m => m.expensesEUR || 0);
-  const profit   = income.map((v, i) => v - expenses[i]);
 
-  const fmtVal = v => `€${v.toFixed(2)}`;
-
-  const ctx = document.getElementById('acct-chart').getContext('2d');
+  const ctx = document.getElementById('acct-chart')?.getContext('2d');
+  if (!ctx) return;
   if (acctChart) acctChart.destroy();
+
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const tickColor = '#6b7280';
+
+  if (acctChartMode === 'stores') {
+    acctChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'bloom.lt',     data: months.map(m => m.stores?.bloom_lt || 0),     backgroundColor: 'rgba(34,197,94,0.75)',  borderRadius: 3, stack: 'income' },
+          { label: 'mossbloom.dk', data: months.map(m => m.stores?.mossbloom_dk || 0), backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 3, stack: 'income' },
+          { label: 'mossbloom.de', data: months.map(m => m.stores?.mossbloom_de || 0), backgroundColor: 'rgba(239,68,68,0.75)',  borderRadius: 3, stack: 'income' },
+          { label: 'B2B',          data: months.map(m => m.stores?.b2b || 0),          backgroundColor: 'rgba(168,85,247,0.75)', borderRadius: 3, stack: 'income' },
+        ],
+      },
+      options: chartOptions(gridColor, tickColor, true),
+    });
+    return;
+  }
+
+  const income   = months.map(m => m.incomeEUR || 0);
+  const expenses = months.map(m => m.expensesEUR || 0);
 
   acctChart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        {
-          label: 'Pajamos (EUR)',
-          data: income,
-          backgroundColor: 'rgba(22,163,74,0.72)',
-          borderColor: '#16a34a',
-          borderWidth: 1,
-          borderRadius: 4,
-          order: 2,
-        },
-        {
-          label: 'Išlaidos (EUR)',
-          data: expenses,
-          backgroundColor: 'rgba(220,38,38,0.72)',
-          borderColor: '#dc2626',
-          borderWidth: 1,
-          borderRadius: 4,
-          order: 2,
-        },
-        {
-          label: 'Pelnas (EUR)',
-          data: profit,
-          type: 'line',
-          borderColor: '#1d4ed8',
-          backgroundColor: 'rgba(29,78,216,0.08)',
-          borderWidth: 2.5,
-          pointRadius: 4,
-          pointBackgroundColor: profit.map(v => v >= 0 ? '#1d4ed8' : '#dc2626'),
-          tension: 0.35,
-          fill: false,
-          order: 1,
-        },
+        { label: 'Pajamos',  data: income,   backgroundColor: 'rgba(34,197,94,0.8)',  borderRadius: 4 },
+        { label: 'Išlaidos', data: expenses, backgroundColor: 'rgba(239,68,68,0.8)', borderRadius: 4 },
       ],
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          position: 'top',
-          labels: { font: { size: 12, family: '-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }, padding: 16 },
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ${fmtVal(ctx.parsed.y)}`,
-          },
-        },
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 12 } } },
-        y: {
-          beginAtZero: true,
-          ticks: {
-            callback: v => fmtVal(v),
-            font: { size: 11 },
-          },
-          grid: { color: 'rgba(0,0,0,0.06)' },
-        },
-      },
-    },
+    options: chartOptions(gridColor, tickColor, false),
   });
 }
 
-function setChartCurrency() {
-  // All amounts are now unified in EUR — toggle is kept so the HTML button doesn't error
-  if (acctChartData) renderChart(acctChartData);
+function chartOptions(gridColor, tickColor, stacked) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: { color: '#9ca3af', font: { size: 12 }, padding: 14, boxWidth: 12 },
+      },
+      tooltip: {
+        backgroundColor: '#1a1d27',
+        borderColor: '#2d3348',
+        borderWidth: 1,
+        titleColor: '#e5e7eb',
+        bodyColor: '#9ca3af',
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: €${(ctx.parsed.y || 0).toLocaleString('lt-LT', { minimumFractionDigits: 2 })}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        stacked: !!stacked,
+        grid: { display: false },
+        ticks: { color: tickColor, font: { size: 11 } },
+      },
+      y: {
+        stacked: !!stacked,
+        beginAtZero: true,
+        grid: { color: gridColor },
+        ticks: {
+          color: tickColor,
+          font: { size: 11 },
+          callback: v => `€${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`,
+        },
+      },
+    },
+  };
 }
 
-// ── Sync ──────────────────────────────────────────────────────────────────────
+// ── Store breakdown ───────────────────────────────────────────────────────────
+
+function renderStoreBreakdown(stores) {
+  const tbody = document.getElementById('acct-stores-tbody');
+  if (!stores?.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = stores.map(row => {
+    const isTotal = row.id === 'total';
+    const chg     = row.changePct;
+    const chgCls  = chg >= 0 ? 'up' : 'down';
+    const chgSign = chg >= 0 ? '+' : '';
+    const storeColor = ACCT_STORE[row.id]?.color || '#9ca3af';
+    return `<tr class="${isTotal ? 'acct-row-total' : ''}">
+      <td><span class="acct-store-dot" style="background:${storeColor}"></span>${esc(row.name)}</td>
+      <td class="num">${row.orders}</td>
+      <td class="num acct-val-income">${fmtEUR(row.incomeEUR)}</td>
+      <td class="num">${row.pctOfTotal.toFixed(1)}%</td>
+      <td class="num"><span class="acct-stat-change ${chgCls}">${chgSign}${chg.toFixed(1)}%</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Transactions ────────────────────────────────────────────────────────────
+
+function storeBadge(entry) {
+  const key = entry.storeKey || entry.store_id;
+  if (entry.source === 'b2b_import') {
+    return `<span class="acct-store-pill" style="background:#a855f71a;color:#c084fc;border-color:#a855f740">B2B</span>`;
+  }
+  const s = ACCT_STORE[key];
+  if (!s) return '<span class="acct-muted">—</span>';
+  return `<span class="acct-store-pill" style="background:${s.color}18;color:${s.color};border-color:${s.color}40">${s.name}</span>`;
+}
+
+function sortEntries(entries) {
+  const { col, dir } = acctSort;
+  return [...entries].sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (col === 'store') {
+      va = a.storeKey || a.store_id || '';
+      vb = b.storeKey || b.store_id || '';
+    }
+    if (col === 'entry_date') return dir * String(va).localeCompare(String(vb));
+    if (typeof va === 'number') return dir * (va - vb);
+    return dir * String(va || '').localeCompare(String(vb || ''));
+  });
+}
+
+function renderEntries(entries) {
+  const tbody = document.getElementById('acct-tbody');
+  const empty = document.getElementById('acct-empty');
+  const sorted = sortEntries(entries);
+
+  if (!sorted.length) {
+    tbody.innerHTML = '';
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  tbody.innerHTML = sorted.map(e => {
+    const isIncome = e.type === 'income';
+    const amtCls   = isIncome ? 'acct-amt-in' : 'acct-amt-out';
+    const amtPfx   = isIncome ? '+' : '−';
+    const srcBadge = SOURCE_BADGE[e.source] || '';
+    const notesHtml = e.notes ? `<div class="acct-tx-notes">${esc(e.notes)}</div>` : '';
+
+    return `<tr>
+      <td class="acct-tx-date">${fmtDate(e.entry_date)}</td>
+      <td>
+        <div class="acct-tx-desc">${esc(e.description)}${srcBadge}</div>
+        ${notesHtml}
+      </td>
+      <td><span class="acct-cat">${esc(e.category || 'Kita')}</span></td>
+      <td>${storeBadge(e)}</td>
+      <td class="num ${amtCls}">${amtPfx}${fmtEUR(e.amountEUR)}</td>
+      <td class="acct-tx-actions">
+        <button type="button" class="acct-icon-btn" onclick="openFileModal(null,null,null,${e.id})" title="Failai">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button type="button" class="acct-icon-btn acct-icon-del" onclick="deleteAcctEntry(${e.id})" title="Ištrinti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll('#acct-tx-table th.sortable').forEach(th => {
+    const col = th.dataset.sort;
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (col === acctSort.col) th.classList.add(acctSort.dir > 0 ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+// ── Sync (refresh from WooCommerce) ───────────────────────────────────────────
 
 async function syncAccounting() {
   const btn  = document.getElementById('acct-sync-btn');
   const icon = document.getElementById('acct-sync-icon');
   btn.disabled = true;
-  icon.style.animation = 'spin 0.9s linear infinite';
+  if (icon) icon.style.animation = 'acct-spin 0.9s linear infinite';
 
   try {
     const { results } = await api('/api/accounting/sync', { method: 'POST' });
     const wc = results.woocommerce, sa = results.sandoriai;
-    const lines = [];
-    if (wc.added || wc.skipped) lines.push(`WooCommerce: +${wc.added} naujų (${wc.skipped} jau yra)`);
-    if (sa.added || sa.skipped) lines.push(`Sandoriai: +${sa.added} naujų (${sa.skipped} jau yra)`);
-    toast(lines.join('\n') || 'Nieko nauja');
-    acctChartData = null; // force chart reload
-    await loadAccounting();
+    const parts = [];
+    if (wc.added) parts.push(`WC: +${wc.added}`);
+    if (sa.added) parts.push(`Sandoriai: +${sa.added}`);
+    if (parts.length) toast(parts.join(' · '));
+    await loadAccounting(true);
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   } finally {
     btn.disabled = false;
-    icon.style.animation = '';
+    if (icon) icon.style.animation = '';
   }
 }
 
-// ── CSV export ─────────────────────────────────────────────────────────────────
+// ── CSV export ────────────────────────────────────────────────────────────────
 
 function exportCSV() {
-  const month   = document.getElementById('acct-month-filter').value;
-  const storeId = document.getElementById('acct-store-filter').value;
-  const p       = new URLSearchParams({ month });
+  const p = new URLSearchParams();
+  if (acctPeriodData.from && acctPeriodData.to) {
+    p.set('from', acctPeriodData.from);
+    p.set('to', acctPeriodData.to);
+  }
+  const storeId = document.getElementById('acct-store-filter')?.value;
   if (storeId) p.set('store_id', storeId);
   window.location.href = `/api/accounting/export.csv?${p}`;
 }
@@ -282,7 +400,6 @@ function openExpenseModal() {
   const form = document.getElementById('expense-form');
   form.reset();
   form.elements['entry_date'].value = new Date().toISOString().slice(0, 10);
-  // Default Kita for expense, keep as is for income
   if (form.elements['category']) form.elements['category'].value = 'Kita';
   document.getElementById('expense-modal').hidden = false;
 }
@@ -299,7 +416,6 @@ async function saveExpense() {
     await api('/api/accounting', { method: 'POST', body: JSON.stringify(data) });
     toast('Įrašas išsaugotas');
     closeExpenseModal();
-    acctChartData = null;
     await loadAccounting();
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
@@ -311,36 +427,57 @@ async function deleteAcctEntry(id) {
   try {
     await api(`/api/accounting/${id}`, { method: 'DELETE' });
     toast('Įrašas ištrintas');
-    acctChartData = null;
     await loadAccounting();
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   }
 }
 
-// ── Month filter ──────────────────────────────────────────────────────────────
-
-function initAccountingMonthFilter() {
-  const sel = document.getElementById('acct-month-filter');
-  const now = new Date();
-  const opts = [];
-  for (let i = 0; i < 13; i++) {
-    const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    // Use local year/month to avoid UTC offset shifting the month back by one day
-    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const lbl = d.toLocaleDateString('lt-LT', { year: 'numeric', month: 'long' });
-    opts.push(`<option value="${val}"${i === 0 ? ' selected' : ''}>${lbl}</option>`);
-  }
-  sel.innerHTML = opts.join('');
-}
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+function setPeriod(period) {
+  acctPeriod = period;
+  document.querySelectorAll('.acct-period-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.period === period);
+  });
+  const customEl = document.getElementById('acct-custom-range');
+  customEl.hidden = period !== 'custom';
+  if (period === 'custom') return;
+  loadAccounting();
+}
+
 function initAccounting() {
-  initAccountingMonthFilter();
-  // DKK toggle is hidden — all chart amounts are unified in EUR
-  const dkkBtn = document.getElementById('chart-dkk-btn');
-  if (dkkBtn) dkkBtn.hidden = true;
-  ['acct-month-filter', 'acct-type-filter', 'acct-category-filter', 'acct-store-filter']
-    .forEach(id => document.getElementById(id).addEventListener('change', loadAccounting));
+  document.querySelectorAll('.acct-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => setPeriod(btn.dataset.period));
+  });
+
+  document.getElementById('chart-mode-eur')?.addEventListener('click', () => setChartMode('eur'));
+  document.getElementById('chart-mode-stores')?.addEventListener('click', () => setChartMode('stores'));
+
+  document.getElementById('acct-apply-range')?.addEventListener('click', () => {
+    acctCustomFrom = document.getElementById('acct-from').value;
+    acctCustomTo   = document.getElementById('acct-to').value;
+    if (acctCustomFrom && acctCustomTo) loadAccounting();
+  });
+
+  ['acct-type-filter', 'acct-category-filter', 'acct-store-filter'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => loadAccounting());
+  });
+
+  document.querySelectorAll('#acct-tx-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (acctSort.col === col) acctSort.dir *= -1;
+      else { acctSort.col = col; acctSort.dir = col === 'entry_date' ? -1 : 1; }
+      updateSortIndicators();
+      renderEntries(acctEntries);
+    });
+  });
+
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  document.getElementById('acct-from').value = first.toISOString().slice(0, 10);
+  document.getElementById('acct-to').value   = now.toISOString().slice(0, 10);
+  acctCustomFrom = first.toISOString().slice(0, 10);
+  acctCustomTo   = now.toISOString().slice(0, 10);
 }

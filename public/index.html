@@ -271,122 +271,126 @@
     </div>
 
     <!-- ── Apskaita View ── -->
-    <div class="view" id="view-accounting" hidden>
+    <div class="view acct-view" id="view-accounting" hidden>
+      <div class="acct-dash">
+        <div class="acct-rates-note" id="acct-rates-note" title="Valiutos kursas"></div>
 
-      <!-- Summary bar -->
-      <div class="acct-summary-bar" id="acct-summary">
-        <div class="acct-summary-card acct-income">
-          <div class="acct-summary-icon">📈</div>
-          <div class="acct-summary-body">
-            <div class="acct-summary-val">—</div>
-            <div class="acct-summary-lbl">Pajamos šį mėnesį</div>
-          </div>
-        </div>
-        <div class="acct-summary-card acct-expense">
-          <div class="acct-summary-icon">📉</div>
-          <div class="acct-summary-body">
-            <div class="acct-summary-val">—</div>
-            <div class="acct-summary-lbl">Išlaidos šį mėnesį</div>
-          </div>
-        </div>
-        <div class="acct-summary-card acct-profit">
-          <div class="acct-summary-icon">💼</div>
-          <div class="acct-summary-body">
-            <div class="acct-summary-val">—</div>
-            <div class="acct-summary-lbl">Pelnas šį mėnesį</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Toolbar -->
-      <div class="acct-toolbar">
-        <div class="acct-toolbar-filters">
-          <select id="acct-month-filter" class="filter-select"></select>
-          <select id="acct-type-filter" class="filter-select">
-            <option value="">Visi tipai</option>
-            <option value="income">Pajamos</option>
-            <option value="expense">Išlaidos</option>
-          </select>
-          <select id="acct-category-filter" class="filter-select">
-            <option value="">Visos kategorijos</option>
-            <option>Pardavimai</option>
-            <option>Žaliavos</option>
-            <option>Nuoma</option>
-            <option>Reklama</option>
-            <option>Transportas</option>
-            <option>Darbo užmokestis</option>
-            <option>Komisiniai</option>
-            <option>Kita</option>
-          </select>
-          <select id="acct-store-filter" class="filter-select">
-            <option value="">Visos parduotuvės</option>
-            <option value="bloom_lt">bloom.lt</option>
-            <option value="mossbloom_dk">mossbloom.dk</option>
-            <option value="mossbloom_de">mossbloom.de</option>
-          </select>
-        </div>
-        <div class="acct-toolbar-actions">
-          <button id="acct-sync-btn" class="btn-sync" onclick="syncAccounting()">
-            <svg id="acct-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-              <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
-            </svg>
-            Sinchronizuoti
-          </button>
-          <button class="btn-secondary" onclick="exportCSV()" title="Eksportuoti CSV">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            CSV
-          </button>
-          <button class="btn-primary" onclick="openExpenseModal()">+ Pridėti įrašą</button>
-        </div>
-      </div>
-
-      <div id="acct-loading" class="loading-bar" hidden><div class="loading-progress"></div></div>
-
-      <div class="content-body">
-
-        <!-- P&L Chart -->
-        <div class="acct-chart-card">
-          <div class="acct-chart-header">
-            <span class="acct-chart-title">Pajamų ir išlaidų dinamika — paskutiniai 6 mėn.</span>
-            <div class="view-toggle-group">
-              <button class="view-toggle-btn active" id="chart-eur-btn" onclick="setChartCurrency('EUR')">€ EUR</button>
-              <button class="view-toggle-btn" id="chart-dkk-btn" onclick="setChartCurrency('DKK')">kr DKK</button>
+        <div class="acct-dash-top">
+          <div class="acct-period-row">
+            <div class="acct-period-btns" id="acct-period-btns">
+              <button type="button" class="acct-period-btn active" data-period="this_month">Šį mėnesį</button>
+              <button type="button" class="acct-period-btn" data-period="last_month">Praėjęs mėnuo</button>
+              <button type="button" class="acct-period-btn" data-period="this_quarter">Šis ketvirtis</button>
+              <button type="button" class="acct-period-btn" data-period="last_quarter">Praėjęs ketvirtis</button>
+              <button type="button" class="acct-period-btn" data-period="this_year">Šie metai</button>
+              <button type="button" class="acct-period-btn" data-period="custom">Pasirinkti</button>
+            </div>
+            <div class="acct-custom-range" id="acct-custom-range" hidden>
+              <input type="date" id="acct-from" class="acct-date-input">
+              <span class="acct-range-sep">—</span>
+              <input type="date" id="acct-to" class="acct-date-input">
+              <button type="button" class="acct-apply-range" id="acct-apply-range">Taikyti</button>
             </div>
           </div>
-          <div class="acct-chart-body">
+          <div class="acct-dash-actions">
+            <button type="button" id="acct-sync-btn" class="acct-btn acct-btn-ghost" onclick="syncAccounting()" title="Atnaujinti iš WooCommerce">
+              <svg id="acct-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/></svg>
+              Atnaujinti
+            </button>
+            <button type="button" class="acct-btn acct-btn-ghost" onclick="exportCSV()">CSV</button>
+            <button type="button" class="acct-btn acct-btn-primary" onclick="openExpenseModal()">+ Įrašas</button>
+          </div>
+        </div>
+
+        <div id="acct-loading" class="acct-loading" hidden><div class="acct-loading-bar"></div></div>
+
+        <div class="acct-stats-grid" id="acct-stats-grid"></div>
+
+        <div class="acct-panel acct-chart-panel">
+          <div class="acct-panel-head">
+            <h3 class="acct-panel-title">Pajamos vs išlaidos</h3>
+            <span class="acct-panel-sub">Paskutiniai 12 mėnesiai</span>
+            <div class="acct-chart-toggle">
+              <button type="button" class="acct-toggle-btn active" id="chart-mode-eur" data-mode="eur">€ EUR</button>
+              <button type="button" class="acct-toggle-btn" id="chart-mode-stores" data-mode="stores">Parduotuvės</button>
+            </div>
+          </div>
+          <div class="acct-chart-wrap">
             <canvas id="acct-chart"></canvas>
           </div>
         </div>
 
-        <!-- Transactions table -->
-        <div id="acct-table-wrap" class="table-wrap">
-          <table class="orders-table">
-            <thead>
-              <tr>
-                <th class="col-date">Data</th>
-                <th>Aprašymas</th>
-                <th>Kategorija</th>
-                <th>Parduotuvė</th>
-                <th class="text-right">Suma</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="acct-tbody"></tbody>
-          </table>
-          <div id="acct-empty" class="empty-state" hidden>
-            <div class="empty-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
-                <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-              </svg>
-            </div>
-            <h3>Įrašų nėra</h3>
-            <p>Sinchronizuokite WooCommerce užsakymus arba pridėkite įrašą rankiniu būdu.</p>
-            <button class="btn-primary" onclick="syncAccounting()">↻ Sinchronizuoti</button>
+        <div class="acct-panel acct-stores-panel">
+          <div class="acct-panel-head">
+            <h3 class="acct-panel-title">Parduotuvių suvestinė</h3>
+            <span class="acct-panel-sub" id="acct-stores-period"></span>
+          </div>
+          <div class="acct-table-scroll">
+            <table class="acct-table" id="acct-stores-table">
+              <thead>
+                <tr>
+                  <th>Parduotuvė</th>
+                  <th class="num">Užsakymai</th>
+                  <th class="num">Pajamos</th>
+                  <th class="num">% viso</th>
+                  <th class="num">vs ankstesnis</th>
+                </tr>
+              </thead>
+              <tbody id="acct-stores-tbody"></tbody>
+            </table>
           </div>
         </div>
 
+        <div class="acct-panel acct-tx-panel">
+          <div class="acct-panel-head">
+            <h3 class="acct-panel-title">Sandoriai</h3>
+            <span class="acct-panel-sub" id="acct-tx-count"></span>
+          </div>
+          <div class="acct-tx-filters">
+            <select id="acct-type-filter" class="acct-filter-select">
+              <option value="">Visi tipai</option>
+              <option value="income">Pajamos</option>
+              <option value="expense">Išlaidos</option>
+            </select>
+            <select id="acct-category-filter" class="acct-filter-select">
+              <option value="">Visos kategorijos</option>
+              <option>Pardavimai</option>
+              <option>Žaliavos</option>
+              <option>Nuoma</option>
+              <option>Reklama</option>
+              <option>Transportas</option>
+              <option>Darbo užmokestis</option>
+              <option>Komisiniai</option>
+              <option>Kita</option>
+            </select>
+            <select id="acct-store-filter" class="acct-filter-select">
+              <option value="">Visos parduotuvės</option>
+              <option value="bloom_lt">bloom.lt</option>
+              <option value="mossbloom_dk">mossbloom.dk</option>
+              <option value="mossbloom_de">mossbloom.de</option>
+              <option value="b2b">B2B</option>
+            </select>
+          </div>
+          <div class="acct-table-scroll">
+            <table class="acct-table acct-tx-table" id="acct-tx-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="entry_date">Data</th>
+                  <th class="sortable" data-sort="description">Aprašymas</th>
+                  <th class="sortable" data-sort="category">Kategorija</th>
+                  <th class="sortable" data-sort="store">Parduotuvė</th>
+                  <th class="sortable num" data-sort="amountEUR">Suma (EUR)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="acct-tbody"></tbody>
+            </table>
+            <div id="acct-empty" class="acct-empty" hidden>
+              <p>Šiuo laikotarpiu sandorių nėra.</p>
+            </div>
+          </div>
+        </div>
       </div>
-
     </div>
 
     <!-- ── Calculator View ── -->

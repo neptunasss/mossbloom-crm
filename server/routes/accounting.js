@@ -3,12 +3,29 @@ const router      = express.Router();
 const requireAuth = require('../middleware/auth');
 const db          = require('../database');
 const fx          = require('../services/fx');
+const stats       = require('../services/accounting-stats');
 
 const STORE_NAME = {
   bloom_lt:     'bloom.lt',
   mossbloom_dk: 'mossbloom.dk',
   mossbloom_de: 'mossbloom.de',
 };
+
+// ── Dashboard (stats, chart, stores, transactions) ───────────────────────────
+// GET /api/accounting/dashboard?period=this_month|last_month|...&from=&to=&type=&category=&store_id=
+
+router.get('/dashboard', requireAuth, async (req, res) => {
+  try {
+    const { runImport } = require('../scripts/import-b2b');
+    runImport(db);
+
+    const data = await stats.buildDashboard(db, req.query);
+    res.json(data);
+  } catch (err) {
+    console.error('[acct-dashboard] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Summary bar ────────────────────────────────────────────────────────────────
 // GET /api/accounting/summary?month=YYYY-MM&store_id=
@@ -30,27 +47,14 @@ router.get('/summary', requireAuth, async (req, res) => {
   res.json({ incomeEUR, expensesEUR, profitEUR: incomeEUR - expensesEUR, rate, month });
 });
 
-// ── P&L chart — last 6 calendar months ────────────────────────────────────────
+// ── P&L chart — last 12 calendar months ───────────────────────────────────────
 // GET /api/accounting/chart
 
 router.get('/chart', requireAuth, async (req, res) => {
   const rate = await fx.getDkkPerEur();
-  const now  = new Date();
-  const monthKeys = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-
-  const data = monthKeys.map(month => {
-    const like = `${month}-%`;
-    const inc  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='income'  AND entry_date LIKE ? GROUP BY currency`).all(like);
-    const exp  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='expense' AND entry_date LIKE ? GROUP BY currency`).all(like);
-    let incomeEUR = 0, expensesEUR = 0;
-    inc.forEach(r => { incomeEUR   += fx.toEur(r.total, r.currency, rate); });
-    exp.forEach(r => { expensesEUR += fx.toEur(r.total, r.currency, rate); });
-    return { month, incomeEUR, expensesEUR };
-  });
+  const data = stats.buildChartMonths(db, rate).map(({ month, incomeEUR, expensesEUR }) => ({
+    month, incomeEUR, expensesEUR,
+  }));
 
   res.json({ months: data, rate });
 });
@@ -58,28 +62,44 @@ router.get('/chart', requireAuth, async (req, res) => {
 // ── CSV export ─────────────────────────────────────────────────────────────────
 // GET /api/accounting/export.csv?month=YYYY-MM&store_id=
 
-router.get('/export.csv', requireAuth, (req, res) => {
-  const month    = req.query.month    || new Date().toISOString().slice(0, 7);
-  const storeId  = req.query.store_id || '';
+router.get('/export.csv', requireAuth, async (req, res) => {
+  const storeId = req.query.store_id || '';
+  const rate    = await fx.getDkkPerEur();
+  let entries;
+  let filename = 'apskaita';
 
-  let query  = 'SELECT * FROM accounting_entries WHERE entry_date LIKE ?';
-  const args = [`${month}-%`];
-  if (storeId) { query += ' AND store_id = ?'; args.push(storeId); }
-  query += ' ORDER BY entry_date DESC, id DESC';
+  if (req.query.from && req.query.to) {
+    entries = db.prepare(`
+      SELECT * FROM accounting_entries WHERE entry_date >= ? AND entry_date <= ?
+      ORDER BY entry_date DESC, id DESC
+    `).all(req.query.from, req.query.to);
+    filename = `apskaita-${req.query.from}_${req.query.to}`;
+  } else {
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    entries = db.prepare(`
+      SELECT * FROM accounting_entries WHERE entry_date LIKE ?
+      ORDER BY entry_date DESC, id DESC
+    `).all(`${month}-%`);
+    filename = `apskaita-${month}`;
+  }
 
-  const entries = db.prepare(query).all(...args);
+  if (storeId) entries = entries.filter(e => stats.matchesStoreFilter(e, storeId));
+
+  const storeLabel = e => {
+    if (e.source === 'b2b_import') return 'B2B';
+    return STORE_NAME[e.store_id] || e.store_id || '';
+  };
 
   const rows = [
-    ['Data', 'Tipas', 'Aprašymas', 'Kategorija', 'Parduotuvė', 'Šaltinis', 'Suma EUR', 'Suma DKK', 'Pastabos'],
+    ['Data', 'Tipas', 'Aprašymas', 'Kategorija', 'Parduotuvė', 'Šaltinis', 'Suma EUR', 'Pastabos'],
     ...entries.map(e => [
       e.entry_date,
       e.type === 'income' ? 'Pajamos' : 'Išlaidos',
       e.description,
       e.category  || '',
-      STORE_NAME[e.store_id] || e.store_id || '',
+      storeLabel(e),
       e.source    || '',
-      e.currency === 'EUR' ? e.amount.toFixed(2) : '',
-      e.currency === 'DKK' ? e.amount.toFixed(2) : '',
+      fx.toEur(e.amount, e.currency, rate).toFixed(2),
       e.notes     || '',
     ]),
   ];
@@ -89,31 +109,45 @@ router.get('/export.csv', requireAuth, (req, res) => {
     .join('\r\n');
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="apskaita-${month}.csv"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
   res.send('﻿' + csv); // UTF-8 BOM for Excel
 });
 
 // ── List entries ───────────────────────────────────────────────────────────────
 // GET /api/accounting?month=YYYY-MM&type=&category=&store_id=&limit=&offset=
 
-router.get('/', requireAuth, (req, res) => {
-  const { month, type, category, store_id, limit = 300, offset = 0 } = req.query;
+router.get('/', requireAuth, async (req, res) => {
+  const { month, from, to, type, category, store_id, limit = 500, offset = 0 } = req.query;
+  const rate = await fx.getDkkPerEur();
 
   let query  = 'SELECT * FROM accounting_entries WHERE 1=1';
   const args = [];
 
-  if (month)    { query += ' AND entry_date LIKE ?'; args.push(`${month}-%`); }
-  if (type)     { query += ' AND type = ?';          args.push(type); }
-  if (category) { query += ' AND category = ?';      args.push(category); }
-  if (store_id) { query += ' AND store_id = ?';      args.push(store_id); }
+  if (from && to) {
+    query += ' AND entry_date >= ? AND entry_date <= ?';
+    args.push(from, to);
+  } else if (month) {
+    query += ' AND entry_date LIKE ?';
+    args.push(`${month}-%`);
+  }
+  if (type)     { query += ' AND type = ?';     args.push(type); }
+  if (category) { query += ' AND category = ?'; args.push(category); }
 
-  query += ' ORDER BY entry_date DESC, id DESC LIMIT ? OFFSET ?';
-  args.push(Number(limit), Number(offset));
+  query += ' ORDER BY entry_date DESC, id DESC';
+  let entries = db.prepare(query).all(...args);
 
-  const entries = db.prepare(query).all(...args);
-  const { cnt: total } = db.prepare('SELECT COUNT(*) AS cnt FROM accounting_entries').get();
+  if (store_id) entries = entries.filter(e => stats.matchesStoreFilter(e, store_id));
 
-  res.json({ entries, total });
+  const total = entries.length;
+  entries = entries.slice(Number(offset), Number(offset) + Number(limit));
+
+  entries = entries.map(e => ({
+    ...e,
+    amountEUR: fx.toEur(e.amount, e.currency, rate),
+    storeKey:  stats.storeKey(e) || e.store_id || '',
+  }));
+
+  res.json({ entries, total, rate });
 });
 
 // ── Sync WooCommerce + Sandoriai ───────────────────────────────────────────────
