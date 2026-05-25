@@ -39,10 +39,10 @@ router.get('/', requireAuth, (req, res) => {
   res.json({ orders, total });
 });
 
-// Sync all stores from WooCommerce
-router.post('/sync', requireAuth, async (req, res) => {
+// Standalone sync function — used by the route AND by startup/interval auto-sync
+async function runSync() {
   const results = [];
-  console.log('[sync] starting sync for', stores.map(s => `${s.id}(url=${s.url},key=${s.key ? 'set' : 'MISSING'})`).join(', '));
+  console.log('[sync] starting for', stores.map(s => `${s.id}(url=${s.url},key=${s.key ? 'set' : 'MISSING'})`).join(', '));
 
   for (const store of stores) {
     if (!store.url || !store.key || !store.secret) {
@@ -51,7 +51,6 @@ router.post('/sync', requireAuth, async (req, res) => {
       continue;
     }
 
-    // Check if this store has been synced before (to avoid spamming on first sync)
     const wasSyncedBefore = db.prepare(
       'SELECT id FROM sync_log WHERE store_id = ? AND status = ? LIMIT 1'
     ).get(store.id, 'success');
@@ -93,7 +92,6 @@ router.post('/sync', requireAuth, async (req, res) => {
         throw txErr;
       }
 
-      // Send Telegram notifications for new orders (skip on first-ever sync to avoid flood)
       if (wasSyncedBefore && telegram.configured) {
         const unnotified = db.prepare(`
           SELECT * FROM orders_cache
@@ -121,11 +119,16 @@ router.post('/sync', requireAuth, async (req, res) => {
       console.error(`[sync] ${store.id} error: ${err.message}`, err.stack);
       db.prepare('INSERT INTO sync_log (store_id, status, error_message) VALUES (?, ?, ?)')
         .run(store.id, 'error', err.message);
-
       results.push({ store: store.id, name: store.name, status: 'error', error: err.message });
     }
   }
 
+  return results;
+}
+
+// Sync all stores from WooCommerce
+router.post('/sync', requireAuth, async (req, res) => {
+  const results = await runSync();
   res.json({ results });
 });
 
@@ -164,4 +167,4 @@ router.get('/sync-status', requireAuth, (req, res) => {
   res.json(statuses);
 });
 
-module.exports = router;
+module.exports = { router, runSync };

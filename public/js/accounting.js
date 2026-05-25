@@ -50,7 +50,7 @@ async function loadAccounting() {
 
     if (chartData) {
       acctChartData = chartData.months;
-      renderChart(acctChartData, acctChartCur);
+      renderChart(acctChartData);
     }
 
     document.getElementById('header-count').textContent = `${entries.length} įrašas(-ų)`;
@@ -64,38 +64,34 @@ async function loadAccounting() {
 // ── Summary bar ───────────────────────────────────────────────────────────────
 
 function renderSummary(data) {
-  const fmt = obj => {
-    const entries = Object.entries(obj || {});
-    if (!entries.length) return '<span style="color:var(--text-muted)">—</span>';
-    return entries.map(([c, v]) => fmtTotal(v, c)).join('<br>');
-  };
-
-  const profitHtml = Object.entries(data.profit || {}).map(([c, v]) => {
-    const cls = v >= 0 ? 'acct-profit-pos' : 'acct-profit-neg';
-    return `<span class="${cls}">${fmtTotal(v, c)}</span>`;
-  }).join('<br>') || '<span style="color:var(--text-muted)">—</span>';
+  const { incomeEUR = 0, expensesEUR = 0, profitEUR = 0, rate = 7.46 } = data;
+  const fmtEUR   = v => `€${parseFloat(v).toFixed(2)}`;
+  const profitCls = profitEUR >= 0 ? 'acct-profit-pos' : 'acct-profit-neg';
 
   document.getElementById('acct-summary').innerHTML = `
     <div class="acct-summary-card acct-income">
       <div class="acct-summary-icon">📈</div>
       <div class="acct-summary-body">
-        <div class="acct-summary-val">${fmt(data.income)}</div>
+        <div class="acct-summary-val">${fmtEUR(incomeEUR)}</div>
         <div class="acct-summary-lbl">Pajamos šį mėnesį</div>
       </div>
     </div>
     <div class="acct-summary-card acct-expense">
       <div class="acct-summary-icon">📉</div>
       <div class="acct-summary-body">
-        <div class="acct-summary-val">${fmt(data.expenses)}</div>
+        <div class="acct-summary-val">${fmtEUR(expensesEUR)}</div>
         <div class="acct-summary-lbl">Išlaidos šį mėnesį</div>
       </div>
     </div>
     <div class="acct-summary-card acct-profit">
       <div class="acct-summary-icon">💼</div>
       <div class="acct-summary-body">
-        <div class="acct-summary-val">${profitHtml}</div>
+        <div class="acct-summary-val"><span class="${profitCls}">${fmtEUR(profitEUR)}</span></div>
         <div class="acct-summary-lbl">Pelnas šį mėnesį</div>
       </div>
+    </div>
+    <div style="grid-column:1/-1;text-align:right;font-size:11px;color:var(--text-muted);padding:2px 4px">
+      Kursas: 1 EUR = ${parseFloat(rate).toFixed(4)} DKK
     </div>
   `;
 }
@@ -156,20 +152,18 @@ function renderEntries(entries) {
 
 const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
 
-function renderChart(months, currency) {
+function renderChart(months) {
   if (!months || !window.Chart) return;
 
-  // Parse YYYY-MM directly — avoids UTC offset shifting the month and
-  // avoids toLocaleDateString('lt-LT', {year:'2-digit'}) rendering as "26-05"
-  const labels = months.map(m => {
+  const labels   = months.map(m => {
     const [yr, mo] = m.month.split('-');
     return `${CHART_MONTHS[Number(mo) - 1]} '${yr.slice(2)}`;
   });
-  const income   = months.map(m => (m.income[currency]   || 0));
-  const expenses = months.map(m => (m.expenses[currency] || 0));
+  const income   = months.map(m => m.incomeEUR   || 0);
+  const expenses = months.map(m => m.expensesEUR || 0);
   const profit   = income.map((v, i) => v - expenses[i]);
 
-  const fmtVal = v => currency === 'DKK' ? `${v.toFixed(0)} kr` : `€${v.toFixed(2)}`;
+  const fmtVal = v => `€${v.toFixed(2)}`;
 
   const ctx = document.getElementById('acct-chart').getContext('2d');
   if (acctChart) acctChart.destroy();
@@ -180,7 +174,7 @@ function renderChart(months, currency) {
       labels,
       datasets: [
         {
-          label: `Pajamos (${currency})`,
+          label: 'Pajamos (EUR)',
           data: income,
           backgroundColor: 'rgba(22,163,74,0.72)',
           borderColor: '#16a34a',
@@ -189,7 +183,7 @@ function renderChart(months, currency) {
           order: 2,
         },
         {
-          label: `Išlaidos (${currency})`,
+          label: 'Išlaidos (EUR)',
           data: expenses,
           backgroundColor: 'rgba(220,38,38,0.72)',
           borderColor: '#dc2626',
@@ -198,7 +192,7 @@ function renderChart(months, currency) {
           order: 2,
         },
         {
-          label: `Pelnas (${currency})`,
+          label: 'Pelnas (EUR)',
           data: profit,
           type: 'line',
           borderColor: '#1d4ed8',
@@ -242,11 +236,9 @@ function renderChart(months, currency) {
   });
 }
 
-function setChartCurrency(currency) {
-  acctChartCur = currency;
-  document.getElementById('chart-eur-btn').classList.toggle('active', currency === 'EUR');
-  document.getElementById('chart-dkk-btn').classList.toggle('active', currency === 'DKK');
-  if (acctChartData) renderChart(acctChartData, currency);
+function setChartCurrency() {
+  // All amounts are now unified in EUR — toggle is kept so the HTML button doesn't error
+  if (acctChartData) renderChart(acctChartData);
 }
 
 // ── Sync ──────────────────────────────────────────────────────────────────────
@@ -346,6 +338,9 @@ function initAccountingMonthFilter() {
 
 function initAccounting() {
   initAccountingMonthFilter();
+  // DKK toggle is hidden — all chart amounts are unified in EUR
+  const dkkBtn = document.getElementById('chart-dkk-btn');
+  if (dkkBtn) dkkBtn.hidden = true;
   ['acct-month-filter', 'acct-type-filter', 'acct-category-filter', 'acct-store-filter']
     .forEach(id => document.getElementById(id).addEventListener('change', loadAccounting));
 }

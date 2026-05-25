@@ -23,8 +23,10 @@ app.use(session({
   },
 }));
 
+const ordersModule = require('./routes/orders');
+
 app.use('/api/auth',       require('./routes/auth'));
-app.use('/api/orders',     require('./routes/orders'));
+app.use('/api/orders',     ordersModule.router);
 app.use('/api/customers',  require('./routes/customers'));
 app.use('/api/deals',      require('./routes/deals'));
 app.use('/api/files',      require('./routes/files'));
@@ -67,4 +69,20 @@ app.listen(PORT, () => {
     console.log('Telegram: not configured (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env to enable)');
   }
   console.log('');
+
+  // Auto-sync: initial run 3s after startup, then every 30 minutes
+  async function autoSync(label) {
+    console.log(`[${label}] auto-sync starting...`);
+    try {
+      const results = await ordersModule.runSync();
+      const total   = results.reduce((sum, r) => sum + (r.count || 0), 0);
+      const summary = results.map(r => r.status === 'success' ? `${r.name}: ${r.count}` : `${r.name}: ${r.status}`).join(', ');
+      console.log(`[${label}] auto-sync complete: ${total} orders (${summary})`);
+    } catch (err) {
+      console.error(`[${label}] auto-sync failed:`, err.message);
+    }
+  }
+
+  setTimeout(() => autoSync('startup'), 3000);
+  setInterval(() => autoSync('auto-sync'), 30 * 60 * 1000);
 });

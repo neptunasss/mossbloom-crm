@@ -2,6 +2,7 @@ const express     = require('express');
 const router      = express.Router();
 const requireAuth = require('../middleware/auth');
 const db          = require('../database');
+const fx          = require('../services/fx');
 
 const STORE_NAME = {
   bloom_lt:     'bloom.lt',
@@ -12,48 +13,46 @@ const STORE_NAME = {
 // ── Summary bar ────────────────────────────────────────────────────────────────
 // GET /api/accounting/summary?month=YYYY-MM&store_id=
 
-router.get('/summary', requireAuth, (req, res) => {
+router.get('/summary', requireAuth, async (req, res) => {
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const like  = `${month}-%`;
+  const base  = req.query.store_id ? ' AND store_id = ?' : '';
+  const args  = req.query.store_id ? [like, req.query.store_id] : [like];
 
-  const base   = req.query.store_id ? ' AND store_id = ?' : '';
-  const args   = req.query.store_id ? [like, req.query.store_id] : [like];
+  const rate   = await fx.getDkkPerEur();
+  const incRow = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='income'  AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
+  const expRow = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='expense' AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
 
-  const incRow  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='income'  AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
-  const expRow  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='expense' AND entry_date LIKE ?${base} GROUP BY currency`).all(...args);
+  let incomeEUR = 0, expensesEUR = 0;
+  incRow.forEach(r => { incomeEUR   += fx.toEur(r.total, r.currency, rate); });
+  expRow.forEach(r => { expensesEUR += fx.toEur(r.total, r.currency, rate); });
 
-  const income = {}, expenses = {}, profit = {};
-  incRow.forEach(r  => { income[r.currency]   = r.total; });
-  expRow.forEach(r  => { expenses[r.currency] = r.total; });
-
-  const currencies = [...new Set([...Object.keys(income), ...Object.keys(expenses)])];
-  currencies.forEach(c => { profit[c] = (income[c] || 0) - (expenses[c] || 0); });
-
-  res.json({ income, expenses, profit, month });
+  res.json({ incomeEUR, expensesEUR, profitEUR: incomeEUR - expensesEUR, rate, month });
 });
 
 // ── P&L chart — last 6 calendar months ────────────────────────────────────────
 // GET /api/accounting/chart
 
-router.get('/chart', requireAuth, (req, res) => {
-  const now    = new Date();
-  const months = [];
+router.get('/chart', requireAuth, async (req, res) => {
+  const rate = await fx.getDkkPerEur();
+  const now  = new Date();
+  const monthKeys = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(d.toISOString().slice(0, 7));
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
 
-  const data = months.map(month => {
+  const data = monthKeys.map(month => {
     const like = `${month}-%`;
     const inc  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='income'  AND entry_date LIKE ? GROUP BY currency`).all(like);
     const exp  = db.prepare(`SELECT currency, SUM(amount) AS total FROM accounting_entries WHERE type='expense' AND entry_date LIKE ? GROUP BY currency`).all(like);
-    const income = {}, expenses = {};
-    inc.forEach(r => { income[r.currency]   = r.total; });
-    exp.forEach(r => { expenses[r.currency] = r.total; });
-    return { month, income, expenses };
+    let incomeEUR = 0, expensesEUR = 0;
+    inc.forEach(r => { incomeEUR   += fx.toEur(r.total, r.currency, rate); });
+    exp.forEach(r => { expensesEUR += fx.toEur(r.total, r.currency, rate); });
+    return { month, incomeEUR, expensesEUR };
   });
 
-  res.json({ months: data });
+  res.json({ months: data, rate });
 });
 
 // ── CSV export ─────────────────────────────────────────────────────────────────
