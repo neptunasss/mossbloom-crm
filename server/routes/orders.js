@@ -4,7 +4,7 @@ const requireAuth = require('../middleware/auth');
 const db = require('../database');
 const { stores, fetchAllStoreOrders } = require('../services/woocommerce');
 const telegram = require('../services/telegram');
-const { addOrderToQueue } = require('../services/production-queue');
+const { addOrderToQueue, markCompletedAsPristatyta, cleanupStaleGauta } = require('../services/production-queue');
 const fx = require('../services/fx');
 
 // List orders — WooCommerce cache + B2B manual orders
@@ -206,9 +206,9 @@ async function runSync() {
         throw txErr;
       }
 
-      // Add qualifying orders to production queue
+      // Add new processing orders to production queue
       for (const order of orders) {
-        if (['processing', 'on-hold', 'completed'].includes(order.status)) {
+        if (['processing', 'on-hold'].includes(order.status)) {
           addOrderToQueue(store.id, order);
         }
       }
@@ -243,6 +243,10 @@ async function runSync() {
       results.push({ store: store.id, name: store.name, status: 'error', error: err.message });
     }
   }
+
+  // Sync production queue state with WC order statuses
+  markCompletedAsPristatyta();
+  cleanupStaleGauta();
 
   return results;
 }

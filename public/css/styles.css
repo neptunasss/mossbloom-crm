@@ -2236,7 +2236,16 @@ svg.lucide { display: block; }
   margin-bottom: 6px;
   flex-wrap: wrap;
 }
-.prod-card-flag { font-size: 16px; line-height: 1; }
+.prod-card-flag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
 .prod-card-store-badge {
   font-size: 0.7rem;
   font-weight: 600;

@@ -4,7 +4,12 @@ const express  = require('express');
 const router   = express.Router();
 const requireAuth = require('../middleware/auth');
 const db       = require('../database');
-const { populateFromCache } = require('../services/production-queue');
+const {
+  populateFromCache,
+  markCompletedAsPristatyta,
+  cleanupStaleGauta,
+  fixBlankCountries,
+} = require('../services/production-queue');
 
 const STAGES = ['gauta', 'gaminama', 'paruosta', 'issista', 'pristatyta'];
 
@@ -76,6 +81,9 @@ router.delete('/:id', requireAuth, (req, res) => {
 
 // POST /api/production/populate — backfill from orders_cache
 router.post('/populate', requireAuth, (req, res) => {
+  fixBlankCountries();
+  cleanupStaleGauta();
+  markCompletedAsPristatyta();
   const added = populateFromCache();
   res.json({ ok: true, added });
 });

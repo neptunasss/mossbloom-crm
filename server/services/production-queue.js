@@ -2,10 +2,17 @@
 
 const db = require('../database');
 
-const COUNTRY_FLAG = { LT: '🇱🇹', DK: '🇩🇰', DE: '🇩🇪' };
+const STORE_COUNTRY = {
+  bloom_lt:     'LT',
+  mossbloom_dk: 'DK',
+  mossbloom_de: 'DE',
+};
 
-function getFlag(country) {
-  return COUNTRY_FLAG[(country || '').toUpperCase()] || '🌍';
+// Resolve country code — prefer billing, fallback to store_id
+function getCountryCode(billingCountry, storeId) {
+  const bc = (billingCountry || '').trim().toUpperCase();
+  if (['LT','DK','DE'].includes(bc)) return bc;
+  return STORE_COUNTRY[storeId] || '';
 }
 
 function addDays(dateStr, n) {
@@ -21,10 +28,10 @@ function addOrderToQueue(storeId, order) {
   ).get(String(order.id), storeId);
   if (existing) return 0;
 
-  const country = order.billing?.country || '';
-  const flag    = getFlag(country);
-  const items   = order.line_items || [];
-  const dueDate = addDays((order.date_created || '').slice(0, 10), 14);
+  const country     = getCountryCode(order.billing?.country, storeId);
+  const items       = order.line_items || [];
+  const dueDate     = addDays((order.date_created || '').slice(0, 10), 14);
+  const orderNumber = order.number ? `#${order.number}` : `#${order.id}`;
 
   let added = 0;
 
@@ -35,7 +42,7 @@ function addOrderToQueue(storeId, order) {
         ['pa_size', 'size', 'Size'].includes(m.key) ||
         (m.display_key || '').toLowerCase().includes('size')
       );
-      const size = sizeMeta?.value || sizeMeta?.display_value || '';
+      const size = sizeMeta?.display_value || sizeMeta?.value || '';
       const img  = item.image?.src || '';
 
       db.prepare(`
@@ -44,9 +51,9 @@ function addOrderToQueue(storeId, order) {
            country, country_flag, due_date)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        String(order.id), storeId, `#${order.id}`,
-        item.name || 'Produktas', size, img,
-        country, flag, dueDate
+        String(order.id), storeId, orderNumber,
+        item.name || `Užsakymas ${orderNumber}`, size, img,
+        country, country, dueDate
       );
       added++;
     }
@@ -55,17 +62,18 @@ function addOrderToQueue(storeId, order) {
       INSERT INTO production_queue
         (order_id, store_id, order_number, product_name, country, country_flag, due_date)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(String(order.id), storeId, `#${order.id}`, 'Užsakymas', country, flag, dueDate);
+    `).run(String(order.id), storeId, orderNumber,
+      `Užsakymas ${orderNumber}`, country, country, dueDate);
     added++;
   }
   return added;
 }
 
-// Scan orders_cache and backfill any missing queue entries
+// Scan orders_cache and backfill any missing queue entries (only processing)
 function populateFromCache() {
   const orders = db.prepare(`
     SELECT store_id, order_id, date_created, data FROM orders_cache
-    WHERE status IN ('processing','completed','on-hold')
+    WHERE status = 'processing'
     ORDER BY date_created DESC
     LIMIT 500
   `).all();
@@ -86,4 +94,53 @@ function populateFromCache() {
   return added;
 }
 
-module.exports = { addOrderToQueue, populateFromCache, getFlag, addDays };
+// Move production cards to 'pristatyta' when their WC order is completed/cancelled
+function markCompletedAsPristatyta() {
+  db.prepare(`
+    UPDATE production_queue
+    SET stage = 'pristatyta', updated_at = datetime('now')
+    WHERE stage != 'pristatyta'
+      AND order_id IN (
+        SELECT CAST(order_id AS TEXT) FROM orders_cache
+        WHERE status IN ('completed','cancelled','refunded','failed')
+      )
+  `).run();
+}
+
+// Remove 'gauta' entries whose orders are no longer processing
+function cleanupStaleGauta() {
+  db.prepare(`
+    DELETE FROM production_queue
+    WHERE stage = 'gauta'
+      AND order_id IN (
+        SELECT CAST(order_id AS TEXT) FROM orders_cache
+        WHERE status NOT IN ('processing','on-hold')
+      )
+  `).run();
+}
+
+// Fix existing rows that have blank country — backfill from store_id
+function fixBlankCountries() {
+  const rows = db.prepare(
+    "SELECT id, store_id FROM production_queue WHERE country = '' OR country IS NULL"
+  ).all();
+  for (const r of rows) {
+    const code = STORE_COUNTRY[r.store_id] || '';
+    if (code) {
+      db.prepare(
+        "UPDATE production_queue SET country = ?, country_flag = ? WHERE id = ?"
+      ).run(code, code, r.id);
+    }
+  }
+  return rows.length;
+}
+
+module.exports = {
+  addOrderToQueue,
+  populateFromCache,
+  markCompletedAsPristatyta,
+  cleanupStaleGauta,
+  fixBlankCountries,
+  getCountryCode,
+  addDays,
+};
