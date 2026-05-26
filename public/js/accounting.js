@@ -16,14 +16,13 @@ const SOURCE_BADGE = {
 const CHART_MONTHS = ['Sau','Vas','Kov','Bal','Geg','Bir','Lie','Rgp','Rgs','Spa','Lap','Gru'];
 
 const STAT_CARDS = [
-  { key: 'income',       label: 'Pajamos',          cls: 'income',  fmt: 'eur' },
-  { key: 'grossProfit',  label: 'Bruto pelnas',     cls: 'profit',  fmt: 'eur', signed: true },
-  { key: 'profit',       label: 'Grynasis pelnas',  cls: 'profit',  fmt: 'eur', signed: true },
-  { key: 'roi',          label: 'ROI',              cls: 'neutral', fmt: 'pct', isRoi: true },
-  { key: 'orderCount',   label: 'Užsakymai',        cls: 'neutral', fmt: 'int' },
-  { key: 'avgOrder',     label: 'Vid. užsakymas',   cls: 'neutral', fmt: 'eur' },
-  { key: 'profitMargin', label: 'Pelno marža',      cls: 'neutral', fmt: 'pct' },
-  { key: 'pvm',          label: 'PVM mokėti',       cls: 'neutral', fmt: 'eur', isPvm: true },
+  { key: 'income',       label: 'Pajamos',         cls: 'income',  fmt: 'eur', isXl: true },
+  { key: 'profit',       label: 'Grynasis pelnas', cls: 'profit',  fmt: 'eur', signed: true, isXl: true },
+  { key: 'roi',          label: 'ROI',             cls: 'neutral', fmt: 'pct', isRoi: true },
+  { key: 'orderCount',   label: 'Užsakymai',       cls: 'neutral', fmt: 'int' },
+  { key: 'avgOrder',     label: 'Vid. užsakymas',  cls: 'neutral', fmt: 'eur' },
+  { key: 'profitMargin', label: 'Pelno marža',     cls: 'neutral', fmt: 'pct' },
+  { key: 'pvm',          label: 'PVM mokėti',      cls: 'neutral', fmt: 'eur', isPvm: true },
 ];
 
 let acctChart         = null;
@@ -169,33 +168,38 @@ const SPARK_COLORS = {
   income: '#4b5563', expense: '#4b5563', profit: '#4b5563', neutral: '#4b5563',
 };
 
-function renderStats(stats) {
-  const grid = document.getElementById('acct-stats-grid');
-
-  grid.innerHTML = STAT_CARDS.map(card => {
-    if (card.isPvm) {
-      const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, dueLabel: '' };
-      return `<div class="acct-stat-card acct-stat-neutral" data-key="pvm" title="PVM 21% nuo šio mėnesio pajamų">
-        <span class="acct-stat-label">PVM mokėti</span>
-        <div class="acct-stat-value">${fmtEURCompact(pvm.moketi)}</div>
-        <div class="acct-pvm-detail">${esc(pvm.dueLabel || '')}</div>
-        <div class="acct-pvm-detail">Surinktinas: ${fmtEUR(pvm.surinktinas)}</div>
-      </div>`;
-    }
-    const s = stats[card.key] || { value: 0, changePct: 0, changeAbs: null };
-    let col = card.cls;
-    if (card.key === 'grossProfit' || card.key === 'profit') col = (s.value >= 0 ? 'income' : 'expense');
-    if (card.isRoi) {
-      const v = s.value;
-      col = v == null ? 'neutral' : v > 15 ? 'income' : v > 0 ? 'roi-ok' : 'expense';
-    }
-    const val = s.value == null ? '—' : fmtStatValue(s.value, card.fmt);
-    return `<div class="acct-stat-card acct-stat-${col}" data-key="${card.key}">
-      <span class="acct-stat-label">${card.label}</span>
-      <div class="acct-stat-value">${val}</div>
-      ${renderChange(s.changePct, s.changeAbs, card.fmt, card.key === 'expenses' ? 'expense' : col)}
+function renderStatCard(card, stats) {
+  if (card.isPvm) {
+    const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, dueLabel: '' };
+    return `<div class="acct-stat-card acct-stat-neutral" data-key="pvm" title="PVM 21% nuo šio mėnesio pajamų">
+      <span class="acct-stat-label">PVM mokėti</span>
+      <div class="acct-stat-value">${fmtEURCompact(pvm.moketi)}</div>
+      <div class="acct-pvm-detail">${esc(pvm.dueLabel || '')}</div>
+      <div class="acct-pvm-detail">Surinktinas: ${fmtEUR(pvm.surinktinas)}</div>
     </div>`;
-  }).join('');
+  }
+  const s = stats[card.key] || { value: 0, changePct: 0, changeAbs: null };
+  let col = card.cls;
+  if (card.key === 'profit') col = (s.value >= 0 ? 'income' : 'expense');
+  if (card.isRoi) {
+    const v = s.value;
+    col = v == null ? 'neutral' : v > 15 ? 'income' : v > 0 ? 'roi-ok' : 'expense';
+  }
+  const val = s.value == null ? '—' : fmtStatValue(s.value, card.fmt);
+  return `<div class="acct-stat-card acct-stat-${col}" data-key="${card.key}">
+    <span class="acct-stat-label">${card.label}</span>
+    <div class="acct-stat-value">${val}</div>
+    ${renderChange(s.changePct, s.changeAbs, card.fmt, card.key === 'expenses' ? 'expense' : col)}
+  </div>`;
+}
+
+function renderStats(stats) {
+  const xlEl = document.getElementById('acct-stats-xl');
+  const smEl = document.getElementById('acct-stats-sm');
+  if (!xlEl || !smEl) return;
+
+  xlEl.innerHTML = STAT_CARDS.filter(c => c.isXl).map(c => renderStatCard(c, stats)).join('');
+  smEl.innerHTML = STAT_CARDS.filter(c => !c.isXl).map(c => renderStatCard(c, stats)).join('');
 }
 
 function renderRatesNote(rate) {
@@ -604,7 +608,7 @@ function renderPipelinePanel(deals, total) {
   if (!el) return;
 
   if (!deals?.length) {
-    el.innerHTML = '<div class="acct-empty-mini">Nėra aktyvių sandorių</div>';
+    el.innerHTML = '<div class="acct-empty-mini">Pridėkite sandorių pipeline stebėjimui</div>';
     return;
   }
 
@@ -640,10 +644,10 @@ function renderRecentOrdersPanel(orders) {
   const STORE_COLOR = { bloom_lt: '#2ea043', mossbloom_dk: '#1f6feb', mossbloom_de: '#da3633', b2b: '#7c3aed' };
 
   el.innerHTML = orders.map(o => {
-    const label = STORE_LABEL[o.store_id] || '?';
-    const color = STORE_COLOR[o.store_id] || '#888';
-    const n = parseFloat(o.total || 0);
-    const amt = o.currency === 'EUR' ? `€${n.toFixed(2)}` : `${n.toFixed(2)} ${o.currency}`;
+    const label = STORE_LABEL[o.store_id] || (o.is_b2b ? 'B2B' : '?');
+    const color = STORE_COLOR[o.store_id] || '#7c3aed';
+    const eur = o.amountEUR != null ? o.amountEUR : parseFloat(o.total || 0);
+    const amt = `€${eur.toFixed(2)}`;
     const email = esc(o.customer_email || o.customer_name || '—');
     return `<div class="recent-order-row" onclick="switchView('orders')" title="Peržiūrėti užsakymus">
       <span class="acct-store-pill" style="background:${color}1a;color:${color};flex-shrink:0">${label}</span>

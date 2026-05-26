@@ -604,13 +604,33 @@ async function buildDashboard(db, query) {
     return s + (d.currency === 'EUR' ? d.amount : fx.toEur(d.amount, d.currency, rate));
   }, 0);
 
-  // Recent WC orders (last 5)
-  const recentOrders = db.prepare(`
-    SELECT store_id, order_id, customer_name, customer_email, total, currency, date_created, status
+  // Recent orders — WC + B2B entries, sorted by date, top 5
+  const wcRecent = db.prepare(`
+    SELECT store_id, CAST(order_id AS TEXT) AS order_id, customer_name, customer_email,
+           total, currency, date_created
     FROM orders_cache
     ORDER BY date_created DESC
     LIMIT 5
   `).all();
+
+  const b2bRecent = db.prepare(`
+    SELECT 'b2b' AS store_id, 'ae-' || CAST(id AS TEXT) AS order_id,
+           description AS customer_name, '' AS customer_email,
+           CAST(amount AS TEXT) AS total, currency, entry_date AS date_created
+    FROM accounting_entries
+    WHERE source IN ('b2b','b2b_import') AND type='income'
+    ORDER BY entry_date DESC
+    LIMIT 5
+  `).all();
+
+  const recentOrders = [...wcRecent, ...b2bRecent]
+    .sort((a, b) => b.date_created.localeCompare(a.date_created))
+    .slice(0, 5)
+    .map(o => ({
+      ...o,
+      is_b2b: o.store_id === 'b2b',
+      amountEUR: fx.toEur(parseFloat(o.total || 0), o.currency, rate),
+    }));
 
   // Lead source breakdown for current period
   let sourcesRows = [];

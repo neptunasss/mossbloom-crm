@@ -30,6 +30,9 @@
 /* ── Reset ── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body { overflow-x: hidden; scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
@@ -37,7 +40,6 @@ body {
   background: var(--bg);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
 }
 
 /* ── Layout ── */
@@ -1486,20 +1488,39 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
   to { transform: rotate(360deg); }
 }
 
-/* Stats grid */
-.acct-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 12px;
-  margin-bottom: 20px;
+/* Stats wrapper: 2 XL cards left + 5 SM cards right */
+.acct-stats-wrapper {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  align-items: stretch;
 }
 
-@media (max-width: 1400px) {
-  .acct-stats-grid { grid-template-columns: repeat(4, 1fr); }
+.acct-stats-xl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: none;
+  width: 42%;
+}
+
+.acct-stats-sm {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 1300px) {
+  .acct-stats-wrapper { flex-direction: column; }
+  .acct-stats-xl { width: 100%; }
+  .acct-stats-sm { grid-template-columns: repeat(5, 1fr); }
 }
 
 @media (max-width: 768px) {
-  .acct-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .acct-stats-xl { grid-template-columns: 1fr; }
+  .acct-stats-sm { grid-template-columns: repeat(2, 1fr); }
 }
 
 .acct-stat-card {
@@ -1534,18 +1555,24 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 }
 
 .acct-stat-value {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
 }
 
-/* Visual hierarchy: Pajamos & Grynasis pelnas get accent borders + larger values */
-.acct-stat-card[data-key="income"] { border-top: 3px solid #22c55e; }
-.acct-stat-card[data-key="income"] .acct-stat-value { font-size: 3rem; }
-.acct-stat-card[data-key="profit"] { border-top: 3px solid #3b82f6; }
-.acct-stat-card[data-key="profit"] .acct-stat-value { font-size: 3rem; }
-.acct-stat-card[data-key="pvm"] .acct-stat-value { font-size: 1.8rem; }
+/* XL cards (Pajamos + Grynasis pelnas) */
+.acct-stats-xl .acct-stat-card {
+  padding: 28px 24px;
+  min-height: 140px;
+}
+.acct-stats-xl .acct-stat-card[data-key="income"] { border-top: 3px solid #22c55e; }
+.acct-stats-xl .acct-stat-card[data-key="profit"] { border-top: 3px solid #3b82f6; }
+.acct-stats-xl .acct-stat-value { font-size: 3.5rem; }
+
+/* SM cards (ROI, Užsakymai, Vid. užsakymas, Pelno marža, PVM) */
+.acct-stats-sm .acct-stat-card { min-height: 90px; padding: 18px 20px; }
+.acct-stats-sm .acct-stat-value { font-size: 1.8rem; }
 
 .acct-stat-sublabel {
   font-size: 9px;
@@ -1764,8 +1791,9 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
   grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
   margin-bottom: 20px;
-  align-items: start;
+  align-items: stretch;
 }
+.acct-row-bottom > .acct-panel { margin-bottom: 0; }
 
 @media (max-width: 1200px) {
   .acct-row-bottom { grid-template-columns: 1fr 1fr; }
@@ -1955,6 +1983,13 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 .acct-amt-out { color: #ef4444 !important; font-weight: 700; }
 
 .acct-muted { color: #6b7280; }
+
+/* Store profit table — equal column widths */
+.acct-col-channel .acct-table { table-layout: fixed; }
+.acct-col-channel .acct-table th:first-child,
+.acct-col-channel .acct-table td:first-child { width: 28%; }
+.acct-col-channel .acct-table th:not(:first-child),
+.acct-col-channel .acct-table td:not(:first-child) { width: 14.4%; }
 
 .acct-tx-actions {
   display: flex;
