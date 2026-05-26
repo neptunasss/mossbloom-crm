@@ -674,6 +674,100 @@ async function buildDashboard(db, query) {
   };
 }
 
+async function buildTodayData(db) {
+  const rate  = await fx.getDkkPerEur();
+  const today = toDateStr(new Date());
+  const now   = new Date();
+  const thisMonth = today.slice(0, 7);
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthStr  = `${lastMonthDate.getFullYear()}-${pad(lastMonthDate.getMonth() + 1)}`;
+
+  // Today's orders
+  const todayRows = db.prepare(`
+    SELECT total, currency FROM orders_cache
+    WHERE substr(date_created,1,10) = ?
+      AND status NOT IN ('cancelled','refunded','failed')
+  `).all(today);
+  const todayOrders  = todayRows.length;
+  const todayRevenue = todayRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0);
+
+  const alerts = [];
+
+  // a) Store silence — any WC store with 0 orders in last 30 days
+  const cutoff30 = toDateStr(new Date(now.getTime() - 30 * 86400000));
+  for (const sid of WC_STORES) {
+    const { c } = db.prepare(`
+      SELECT COUNT(*) AS c FROM orders_cache
+      WHERE store_id = ? AND substr(date_created,1,10) >= ?
+        AND status NOT IN ('cancelled','refunded','failed')
+    `).get(sid, cutoff30);
+    if (c === 0) {
+      const { lastDate } = db.prepare(`
+        SELECT MAX(substr(date_created,1,10)) AS lastDate FROM orders_cache WHERE store_id = ?
+      `).get(sid) || {};
+      const days = lastDate ? Math.round((new Date(today) - new Date(lastDate)) / 86400000) : 30;
+      alerts.push({ icon: 'alert-triangle', color: '#ff9500', bg: '#fff5e6',
+        text: `${STORE_NAME[sid] || sid} — ${days} dienų be užsakymų` });
+    }
+  }
+
+  // b) Top performer — store with highest % growth this month vs last month
+  const storeGrowth = [];
+  for (const sid of WC_STORES) {
+    const thisRev = wcIncomeFromCache(db, sid, `${thisMonth}-01`, today, rate);
+    const lastRev = wcIncomeFromCache(db, sid, `${lastMonthStr}-01`, `${lastMonthStr}-31`, rate);
+    if (lastRev > 0 && thisRev > 0) {
+      storeGrowth.push({ sid, pct: ((thisRev - lastRev) / lastRev) * 100 });
+    }
+  }
+  if (storeGrowth.length) {
+    storeGrowth.sort((a, b) => b.pct - a.pct);
+    const best = storeGrowth[0];
+    if (best.pct > 0) {
+      alerts.push({ icon: 'trending-up', color: '#34c759', bg: '#e8faf0',
+        text: `${STORE_NAME[best.sid]} +${best.pct.toFixed(0)}% šį mėnesį` });
+    }
+  }
+
+  // c) PVM reminder — if between 1st and 15th of month
+  if (now.getDate() <= 15) {
+    const pvmMonthFrom  = `${thisMonth}-01`;
+    const pvmMonthLast  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const pvmMonthTo    = toDateStr(pvmMonthLast);
+    const pvmWcRows = db.prepare(`
+      SELECT total, currency FROM orders_cache
+      WHERE substr(date_created,1,10) >= ? AND substr(date_created,1,10) <= ?
+        AND status NOT IN ('cancelled','refunded','failed')
+    `).all(pvmMonthFrom, pvmMonthTo);
+    const pvmIncome = pvmWcRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0);
+    const pvmAmt    = pvmIncome * 21 / 121;
+    const nextMo    = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const LT_MONTHS = ['sau','vas','kov','bal','geg','bir','lie','rgp','rgs','spa','lap','gru'];
+    alerts.push({ icon: 'clock', color: '#007aff', bg: '#e8f2ff',
+      text: `PVM mokėtinas iki ${LT_MONTHS[nextMo.getMonth()]} 15 — €${Math.round(pvmAmt).toLocaleString('lt-LT')}` });
+  }
+
+  // d) Forecast — if on pace to miss €8333/month target
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysPassed  = now.getDate();
+  const monthFrom   = `${thisMonth}-01`;
+  const monthWcRows = db.prepare(`
+    SELECT total, currency FROM orders_cache
+    WHERE substr(date_created,1,10) >= ? AND substr(date_created,1,10) <= ?
+      AND status NOT IN ('cancelled','refunded','failed')
+  `).all(monthFrom, today);
+  const monthRevSoFar = monthWcRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0);
+  const projected = daysPassed > 0 ? (monthRevSoFar / daysPassed) * daysInMonth : monthRevSoFar;
+  const target    = 100000 / 12;
+  const shortfall = target - projected;
+  if (shortfall > 500) {
+    alerts.push({ icon: 'target', color: '#ff3b30', bg: '#fff0ef',
+      text: `Tikslo tempui reikia dar €${Math.round(shortfall).toLocaleString('lt-LT')}` });
+  }
+
+  return { todayOrders, todayRevenue, alerts: alerts.slice(0, 4) };
+}
+
 module.exports = {
   STORE_NAME,
   STORE_ROWS,
@@ -684,4 +778,5 @@ module.exports = {
   matchesStoreFilter,
   isB2bEntry,
   buildDashboard,
+  buildTodayData,
 };

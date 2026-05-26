@@ -13,6 +13,17 @@ const STORE_NAME = {
   mossbloom_de: 'mossbloom.de',
 };
 
+// ── Today's activity + alerts ─────────────────────────────────────────────────
+// GET /api/accounting/today
+router.get('/today', requireAuth, async (req, res) => {
+  try {
+    const data = await stats.buildTodayData(db);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Dashboard (stats, chart, stores, transactions) ───────────────────────────
 // GET /api/accounting/dashboard?period=this_month|last_month|...&from=&to=&type=&category=&store_id=
 

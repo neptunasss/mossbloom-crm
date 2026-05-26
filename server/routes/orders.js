@@ -5,6 +5,7 @@ const db = require('../database');
 const { stores, fetchAllStoreOrders } = require('../services/woocommerce');
 const telegram = require('../services/telegram');
 const { addOrderToQueue } = require('../services/production-queue');
+const fx = require('../services/fx');
 
 // List orders — WooCommerce cache + B2B manual orders
 router.get('/', requireAuth, (req, res) => {
@@ -264,7 +265,10 @@ router.patch('/:storeId/:orderId/producer-status', requireAuth, (req, res) => {
 });
 
 // Last sync info per store
-router.get('/sync-status', requireAuth, (req, res) => {
+router.get('/sync-status', requireAuth, async (req, res) => {
+  const rate = await fx.getDkkPerEur().catch(() => 7.46);
+  const thisMonth = new Date().toISOString().slice(0, 7);
+
   const statuses = stores.map(store => {
     const last = db.prepare(
       'SELECT status, orders_fetched, synced_at FROM sync_log WHERE store_id = ? ORDER BY synced_at DESC LIMIT 1'
@@ -272,12 +276,23 @@ router.get('/sync-status', requireAuth, (req, res) => {
 
     const { cnt } = db.prepare('SELECT COUNT(*) as cnt FROM orders_cache WHERE store_id = ?').get(store.id);
 
+    const monthRows = db.prepare(
+      `SELECT total, currency FROM orders_cache
+       WHERE store_id = ? AND substr(date_created,1,7) = ?
+         AND status NOT IN ('cancelled','refunded','failed')`
+    ).all(store.id, thisMonth);
+
+    const monthOrders  = monthRows.length;
+    const monthRevenue = monthRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0);
+
     return {
       store: store.id,
       name: store.name,
       label: store.label,
       color: store.color,
       orderCount: cnt,
+      monthOrders,
+      monthRevenue,
       configured: !!(store.url && store.key && store.secret),
       lastSync: last?.synced_at || null,
       lastSyncStatus: last?.status || null,

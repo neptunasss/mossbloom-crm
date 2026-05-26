@@ -8,6 +8,9 @@
   <meta name="apple-mobile-web-app-title" content="Gamyba">
   <meta name="theme-color" content="#f5f5f7">
   <title>Mossbloom CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="manifest" href="/manifest.json">
 </head>
@@ -85,13 +88,24 @@
         <button id="sidebar-toggle" class="btn-icon sidebar-toggle" aria-label="Toggle menu">
           <i data-lucide="menu"></i>
         </button>
-        <h1 class="page-title" id="page-title">Orders</h1>
+        <div class="page-title-wrap">
+          <h1 class="page-title" id="page-title">Orders</h1>
+          <span class="page-subtitle" id="page-subtitle"></span>
+        </div>
         <span id="header-count" class="count-badge">—</span>
       </div>
       <div class="header-right">
-        <button id="sync-btn" class="btn-sync">
-          <i data-lucide="refresh-cw" id="sync-icon"></i>
-          <span id="sync-label">Sync</span>
+        <div class="toolbar-search" id="toolbar-search" onclick="focusSearch()">
+          <i data-lucide="search" style="width:13px;height:13px;color:#86868b;flex-shrink:0"></i>
+          <span class="toolbar-search-text">Search…</span>
+          <kbd class="toolbar-search-kbd">⌘K</kbd>
+        </div>
+        <span class="toolbar-date" id="toolbar-date">
+          <i data-lucide="calendar" style="width:13px;height:13px;color:#86868b;flex-shrink:0"></i>
+          <span id="toolbar-date-label">—</span>
+        </span>
+        <button id="sync-btn" class="btn-icon" title="Sync stores">
+          <i data-lucide="refresh-cw" id="sync-icon" style="width:15px;height:15px"></i>
         </button>
         <button id="new-b2b-btn" class="btn-primary" hidden>+ B2B Order</button>
         <button id="new-deal-btn" class="btn-primary" hidden>+ New Deal</button>
@@ -361,6 +375,12 @@
         </div>
 
         <div class="acct-row-bottom">
+          <div class="acct-panel acct-col-today">
+            <div class="acct-panel-head">
+              <h3 class="acct-panel-title" id="acct-today-title">Šiandien</h3>
+            </div>
+            <div id="acct-today-panel"><div class="acct-empty-mini">Kraunama…</div></div>
+          </div>
           <div class="acct-panel acct-col-pipeline">
             <div class="acct-panel-head">
               <h3 class="acct-panel-title">Pipeline prognozė</h3>

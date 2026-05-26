@@ -61,14 +61,18 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba' };
+  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba' };
+  const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '' };
   document.getElementById('page-title').textContent = titles[view] || view;
+  document.getElementById('page-subtitle').textContent = subtitles[view] || '';
   document.body.classList.toggle('acct-mode', view === 'accounting');
 
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
   document.getElementById('header-count').hidden = view === 'calculator' || view === 'production';
+
+  updateToolbarDate();
 
   if (view === 'orders')     loadOrders();
   if (view === 'deals')      loadDeals();
@@ -211,11 +215,9 @@ async function syncOrders() {
   if (state.syncing) return;
   state.syncing = true;
 
-  const btn   = document.getElementById('sync-btn');
-  const label = document.getElementById('sync-label');
+  const btn = document.getElementById('sync-btn');
   btn.disabled = true;
   btn.classList.add('syncing');
-  label.textContent = 'Syncing…';
 
   try {
     const { results } = await api('/api/orders/sync', { method: 'POST' });
@@ -232,7 +234,6 @@ async function syncOrders() {
     state.syncing = false;
     btn.disabled = false;
     btn.classList.remove('syncing');
-    label.textContent = 'Sync';
   }
 }
 
@@ -248,20 +249,33 @@ async function loadSyncStatus() {
 function renderStoreStatus(statuses) {
   const container = document.getElementById('store-status');
   container.innerHTML = statuses.map(s => {
-    const store = STORES[s.store] || {};
-    const icon  = !s.configured ? '○' : s.lastSyncStatus === 'success' ? '✓' : s.lastSyncStatus === 'error' ? '!' : '○';
-    const cls   = !s.configured ? 'unconfigured' : s.lastSyncStatus || 'unconfigured';
-    const tip   = s.lastSync ? `Last sync: ${timeAgo(s.lastSync)}` : 'Never synced';
+    const store  = STORES[s.store] || {};
+    const cls    = !s.configured ? 'unconfigured' : s.lastSyncStatus || 'unconfigured';
+    const tip    = s.lastSync ? `Last sync: ${timeAgo(s.lastSync)}` : 'Never synced';
+    const rev    = s.monthRevenue > 0 ? ` · €${Math.round(s.monthRevenue).toLocaleString('lt-LT')}` : '';
+    const detail = `${s.monthOrders ?? s.orderCount} šį mėn${rev}`;
 
     return `<div class="store-stat" title="${esc(tip)}">
-      <div class="store-stat-dot" style="background:${store.color || '#484f58'}"></div>
+      <div class="store-stat-dot" style="background:${store.color || '#aeaeb2'}"></div>
       <div class="store-stat-info">
         <span class="store-stat-name">${esc(s.name)}</span>
-        <span class="store-stat-count">${s.orderCount} order${s.orderCount !== 1 ? 's' : ''}</span>
+        <span class="store-stat-count">${esc(detail)}</span>
       </div>
-      <span class="store-stat-icon ${esc(cls)}">${icon}</span>
+      <span class="store-stat-icon ${esc(cls)}"><i data-lucide="check" style="width:11px;height:11px"></i></span>
     </div>`;
   }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+function updateToolbarDate() {
+  const el = document.getElementById('toolbar-date-label');
+  if (!el) return;
+  el.textContent = new Date().toLocaleDateString('lt-LT', { month: 'long', year: 'numeric' });
+}
+
+function focusSearch() {
+  const si = document.getElementById('search-input');
+  if (si) { si.focus(); si.select(); }
 }
 
 // ── Customer Panel ────────────────────────────────────────────────────────────

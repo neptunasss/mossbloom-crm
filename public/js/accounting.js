@@ -96,6 +96,8 @@ async function loadAccounting(silent = false) {
       `${data.total} sandorių · ${data.period.from} – ${data.period.to}`;
     document.getElementById('header-count').textContent =
       `${data.total} sandorių`;
+
+    loadTodayPanel();
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   } finally {
@@ -164,10 +166,6 @@ function sparklineSvg(values, color) {
   return `<svg class="acct-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/></svg>`;
 }
 
-const SPARK_COLORS = {
-  income: '#4b5563', expense: '#4b5563', profit: '#4b5563', neutral: '#4b5563',
-};
-
 function renderStatCard(card, stats) {
   if (card.isPvm) {
     const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, dueLabel: '' };
@@ -186,10 +184,21 @@ function renderStatCard(card, stats) {
     col = v == null ? 'neutral' : v > 15 ? 'income' : v > 0 ? 'roi-ok' : 'expense';
   }
   const val = s.value == null ? '—' : fmtStatValue(s.value, card.fmt);
+
+  let sparkHtml = '';
+  if (card.isXl && acctChartData && acctChartData.length >= 2) {
+    const last6 = acctChartData.slice(-6).map(m =>
+      card.key === 'income' ? (m.incomeEUR || 0) : (m.incomeEUR - m.expensesEUR || 0)
+    );
+    const color = card.key === 'income' ? '#34c759' : '#007aff';
+    sparkHtml = sparklineSvg(last6, color);
+  }
+
   return `<div class="acct-stat-card acct-stat-${col}" data-key="${card.key}">
     <span class="acct-stat-label">${card.label}</span>
     <div class="acct-stat-value">${val}</div>
     ${renderChange(s.changePct, s.changeAbs, card.fmt, card.key === 'expenses' ? 'expense' : col)}
+    ${sparkHtml}
   </div>`;
 }
 
@@ -608,7 +617,12 @@ function renderPipelinePanel(deals, total) {
   if (!el) return;
 
   if (!deals?.length) {
-    el.innerHTML = '<div class="acct-empty-mini">Pridėkite sandorių pipeline stebėjimui</div>';
+    el.innerHTML = `<div class="pipeline-empty-state">
+      <i data-lucide="trending-up" style="width:40px;height:40px;color:#aeaeb2;stroke-width:1.5"></i>
+      <h4>No active opportunities</h4>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 12px;margin-top:4px" onclick="openDealModal()">+ Add Deal</button>
+    </div>`;
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
@@ -739,4 +753,44 @@ function initAccounting() {
   document.getElementById('acct-to').value   = now.toISOString().slice(0, 10);
   acctCustomFrom = first.toISOString().slice(0, 10);
   acctCustomTo   = now.toISOString().slice(0, 10);
+}
+
+// ── Šiandien / Founder Brain widget ──────────────────────────────────────────
+
+async function loadTodayPanel() {
+  const el = document.getElementById('acct-today-panel');
+  const titleEl = document.getElementById('acct-today-title');
+  if (!el) return;
+
+  const todayLabel = new Date().toLocaleDateString('lt-LT', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (titleEl) titleEl.textContent = todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1);
+
+  try {
+    const d = await api('/api/accounting/today');
+
+    const heroHtml = `<div class="today-hero">
+      <div class="today-stat">
+        <div class="today-stat-val">${d.todayOrders}</div>
+        <div class="today-stat-lbl">Užsakymų</div>
+      </div>
+      <div class="today-stat">
+        <div class="today-stat-val">${d.todayRevenue > 0 ? '€' + Math.round(d.todayRevenue).toLocaleString('lt-LT') : '—'}</div>
+        <div class="today-stat-lbl">Pajamos</div>
+      </div>
+    </div>
+    ${d.todayOrders === 0 ? '<div class="today-empty">Šiandien dar nėra užsakymų</div>' : ''}`;
+
+    const alertsHtml = d.alerts.length
+      ? `<div class="today-alerts">${d.alerts.map(a => `
+        <div class="today-alert" style="background:${a.bg};color:${a.color}">
+          <i data-lucide="${a.icon}" class="today-alert-icon" style="color:${a.color};stroke-width:1.8"></i>
+          <span>${esc(a.text)}</span>
+        </div>`).join('')}</div>`
+      : '';
+
+    el.innerHTML = heroHtml + alertsHtml;
+    if (window.lucide) lucide.createIcons();
+  } catch {
+    el.innerHTML = '<div class="acct-empty-mini">Nepavyko užkrauti</div>';
+  }
 }
