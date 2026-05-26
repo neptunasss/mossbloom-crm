@@ -79,6 +79,7 @@ function switchView(view) {
   if (view === 'accounting') loadAccounting();
   if (view === 'calculator') initCalculator();
   if (view === 'production') initProduction();
+  if (view === 'products')   initProducts();
 
   // Close sidebar on mobile after nav click
   document.querySelector('.sidebar').classList.remove('open');

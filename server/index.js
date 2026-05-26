@@ -32,6 +32,7 @@ app.use('/api/deals',      require('./routes/deals'));
 app.use('/api/files',      require('./routes/files'));
 app.use('/api/accounting', require('./routes/accounting'));
 app.use('/api/production', require('./routes/production').router);
+app.use('/api/products',  require('./routes/products'));
 
 app.use(express.static(path.join(__dirname, '../public')));
 

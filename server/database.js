@@ -151,6 +151,85 @@ try {
   )`);
 } catch {}
 
+// Products catalog
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sku TEXT UNIQUE,
+    name TEXT,
+    moss_type TEXT,
+    store TEXT,
+    frame_cost REAL,
+    moss_cost REAL,
+    extras_cost REAL,
+    total_cost REAL,
+    sell_price_eur REAL,
+    sell_price_dkk REAL,
+    gross_profit REAL,
+    margin_pct REAL
+  )`);
+
+  const prow = db.prepare('SELECT COUNT(*) as cnt FROM products').get();
+  if (prow.cnt === 0) {
+    const SEED = [
+      // LT - Ball moss
+      {sku:'lt-30-ball',    name:'ø30cm — ball moss',   moss_type:'mini ball moss',     store:'LT', frame_cost:9.90,  moss_cost:12.47,  extras_cost:0,     sell_price_eur:79,     sell_price_dkk:null},
+      {sku:'lt-40-ball',    name:'ø40cm — ball moss',   moss_type:'mini ball moss',     store:'LT', frame_cost:13.52, moss_cost:22.17,  extras_cost:0,     sell_price_eur:129,    sell_price_dkk:null},
+      {sku:'lt-50-ball',    name:'ø50cm — ball moss',   moss_type:'pole moss (5) CN',   store:'LT', frame_cost:18.90, moss_cost:31.29,  extras_cost:0,     sell_price_eur:189,    sell_price_dkk:null},
+      {sku:'lt-60-ball',    name:'ø60cm — ball moss',   moss_type:'pole moss (5) CN',   store:'LT', frame_cost:27.90, moss_cost:45.06,  extras_cost:0,     sell_price_eur:239,    sell_price_dkk:null},
+      {sku:'lt-70-ball',    name:'ø70cm — ball moss',   moss_type:'pole moss (5) CN',   store:'LT', frame_cost:36.91, moss_cost:61.33,  extras_cost:0,     sell_price_eur:327.99, sell_price_dkk:null},
+      {sku:'lt-80-ball',    name:'ø80cm — ball moss',   moss_type:'pole moss (5) CN',   store:'LT', frame_cost:48.59, moss_cost:80.10,  extras_cost:0,     sell_price_eur:399,    sell_price_dkk:null},
+      {sku:'lt-90-ball',    name:'ø90cm — ball moss',   moss_type:'pole moss (5) CN',   store:'LT', frame_cost:61.20, moss_cost:101.38, extras_cost:0,     sell_price_eur:478,    sell_price_dkk:null},
+      {sku:'lt-100-ball',   name:'ø100cm — ball moss',  moss_type:'pole moss (5) CN',   store:'LT', frame_cost:76.50, moss_cost:125.16, extras_cost:0,     sell_price_eur:599,    sell_price_dkk:null},
+      {sku:'lt-120x30-ball',name:'120×30cm — ball moss',moss_type:'pole moss (5) CN',   store:'LT', frame_cost:25,    moss_cost:57.37,  extras_cost:0,     sell_price_eur:299,    sell_price_dkk:null},
+      // LT - Mix
+      {sku:'lt-30-mix',     name:'ø30cm — mix',         moss_type:'mix',                store:'LT', frame_cost:9.90,  moss_cost:15.41,  extras_cost:12.89, sell_price_eur:79,     sell_price_dkk:null},
+      {sku:'lt-40-mix',     name:'ø40cm — mix',         moss_type:'mix',                store:'LT', frame_cost:13.52, moss_cost:27.40,  extras_cost:17.01, sell_price_eur:99,     sell_price_dkk:null},
+      {sku:'lt-50-mix',     name:'ø50cm — mix',         moss_type:'mix',                store:'LT', frame_cost:18.90, moss_cost:42.81,  extras_cost:22.30, sell_price_eur:189,    sell_price_dkk:null},
+      {sku:'lt-60-mix',     name:'ø60cm — mix',         moss_type:'mix',                store:'LT', frame_cost:27.90, moss_cost:61.64,  extras_cost:28.77, sell_price_eur:239,    sell_price_dkk:null},
+      {sku:'lt-70-mix',     name:'ø70cm — mix',         moss_type:'mix',                store:'LT', frame_cost:36.91, moss_cost:83.90,  extras_cost:36.42, sell_price_eur:327.99, sell_price_dkk:null},
+      {sku:'lt-80-mix',     name:'ø80cm — mix',         moss_type:'mix',                store:'LT', frame_cost:48.59, moss_cost:109.59, extras_cost:45.24, sell_price_eur:399,    sell_price_dkk:null},
+      {sku:'lt-90-mix',     name:'ø90cm — mix',         moss_type:'mix',                store:'LT', frame_cost:61.20, moss_cost:138.70, extras_cost:55.24, sell_price_eur:478,    sell_price_dkk:null},
+      {sku:'lt-100-mix',    name:'ø100cm — mix',        moss_type:'mix',                store:'LT', frame_cost:76.50, moss_cost:171.23, extras_cost:66.42, sell_price_eur:599,    sell_price_dkk:null},
+      {sku:'lt-120x30-mix', name:'120×30cm — mix',      moss_type:'mix',                store:'LT', frame_cost:25,    moss_cost:78.49,  extras_cost:34.56, sell_price_eur:299,    sell_price_dkk:null},
+      {sku:'lt-60x90-mix',  name:'60×90cm — mix',       moss_type:'mix',                store:'LT', frame_cost:25,    moss_cost:117.73, extras_cost:48.04, sell_price_eur:389,    sell_price_dkk:null},
+      {sku:'lt-trio',       name:'TRIO bundle',          moss_type:'mini + pole (5) CN', store:'LT', frame_cost:42.30, moss_cost:65.93,  extras_cost:0,     sell_price_eur:349,    sell_price_dkk:null},
+      // DK - Ball moss
+      {sku:'dk-30-ball',    name:'ø30cm — ball moss',   moss_type:'mini ball',          store:'DK', frame_cost:9.90,  moss_cost:12.47,  extras_cost:0,     sell_price_eur:93.66,  sell_price_dkk:700},
+      {sku:'dk-50-ball',    name:'ø50cm — ball moss',   moss_type:'pole (5) CN',        store:'DK', frame_cost:18.90, moss_cost:31.29,  extras_cost:0,     sell_price_eur:247.40, sell_price_dkk:1849},
+      {sku:'dk-60-ball',    name:'ø60cm — ball moss',   moss_type:'pole (5) CN',        store:'DK', frame_cost:27.90, moss_cost:45.06,  extras_cost:0,     sell_price_eur:300.92, sell_price_dkk:2249},
+      {sku:'dk-70-ball',    name:'ø70cm — ball moss',   moss_type:'pole (5) CN',        store:'DK', frame_cost:36.91, moss_cost:61.33,  extras_cost:0,     sell_price_eur:361.13, sell_price_dkk:2699},
+      {sku:'dk-80-ball',    name:'ø80cm — ball moss',   moss_type:'pole (5) CN',        store:'DK', frame_cost:48.59, moss_cost:80.10,  extras_cost:0,     sell_price_eur:508.31, sell_price_dkk:3799},
+      {sku:'dk-90-ball',    name:'ø90cm — ball moss',   moss_type:'pole (5) CN',        store:'DK', frame_cost:61.20, moss_cost:101.38, extras_cost:0,     sell_price_eur:642.11, sell_price_dkk:4799},
+      {sku:'dk-100-ball',   name:'ø100cm — ball moss',  moss_type:'pole (5) CN',        store:'DK', frame_cost:76.50, moss_cost:125.16, extras_cost:0,     sell_price_eur:735.77, sell_price_dkk:5499},
+      // DK - Mix
+      {sku:'dk-50-mix',     name:'ø50cm — mix',         moss_type:'mix',                store:'DK', frame_cost:18.90, moss_cost:42.81,  extras_cost:22.30, sell_price_eur:240.71, sell_price_dkk:1799},
+      {sku:'dk-60-mix',     name:'ø60cm — mix',         moss_type:'mix',                store:'DK', frame_cost:27.90, moss_cost:61.64,  extras_cost:28.77, sell_price_eur:320.99, sell_price_dkk:2399},
+      {sku:'dk-70-mix',     name:'ø70cm — mix',         moss_type:'mix',                store:'DK', frame_cost:36.91, moss_cost:83.90,  extras_cost:36.42, sell_price_eur:401.27, sell_price_dkk:2999},
+      {sku:'dk-80-mix',     name:'ø80cm — mix',         moss_type:'mix',                store:'DK', frame_cost:48.59, moss_cost:109.59, extras_cost:45.24, sell_price_eur:508.31, sell_price_dkk:3799},
+      {sku:'dk-90-mix',     name:'ø90cm — mix',         moss_type:'mix',                store:'DK', frame_cost:61.20, moss_cost:138.70, extras_cost:55.24, sell_price_eur:628.73, sell_price_dkk:4699},
+      {sku:'dk-100-mix',    name:'ø100cm — mix',        moss_type:'mix',                store:'DK', frame_cost:76.50, moss_cost:171.23, extras_cost:66.42, sell_price_eur:722.39, sell_price_dkk:5399},
+      {sku:'dk-trio',       name:'TRIO bundle',          moss_type:'mini+pole5',         store:'DK', frame_cost:42.30, moss_cost:65.93,  extras_cost:0,     sell_price_eur:401.27, sell_price_dkk:2999},
+    ];
+    const ins = db.prepare(`
+      INSERT OR IGNORE INTO products
+        (sku,name,moss_type,store,frame_cost,moss_cost,extras_cost,total_cost,sell_price_eur,sell_price_dkk,gross_profit,margin_pct)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    for (const p of SEED) {
+      const tc = p.frame_cost + p.moss_cost + p.extras_cost;
+      const gp = p.sell_price_eur - tc;
+      const mp = (gp / p.sell_price_eur) * 100;
+      ins.run(p.sku, p.name, p.moss_type, p.store, p.frame_cost, p.moss_cost, p.extras_cost,
+        Math.round(tc * 100) / 100, p.sell_price_eur, p.sell_price_dkk || null,
+        Math.round(gp * 100) / 100, Math.round(mp * 100) / 100);
+    }
+    console.log(`[db] seeded ${SEED.length} products`);
+  }
+} catch (e) {
+  console.error('[db] products setup error:', e.message);
+}
+
 // Order source tagging
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS order_sources (

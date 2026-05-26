@@ -530,11 +530,59 @@
     <!-- ── Products View ── -->
     <div class="view" id="view-products" hidden>
       <div class="content-body">
-        <div class="products-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.3"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-          <h3 style="color:#4b5563;margin-top:16px;font-size:18px">Netrukus...</h3>
-          <p style="color:#6b7280;margin-top:8px;font-size:13px">Produktų katalogas bus prieinamas netrukus.</p>
+
+        <!-- KPI row -->
+        <div class="products-stats-row" id="products-stats">
+          <div class="prod-stat-card"><div class="prod-stat-label">Best Margin</div><div class="prod-stat-value">—</div></div>
+          <div class="prod-stat-card"><div class="prod-stat-label">Worst Margin</div><div class="prod-stat-value">—</div></div>
+          <div class="prod-stat-card"><div class="prod-stat-label">Avg Margin</div><div class="prod-stat-value">—</div></div>
+          <div class="prod-stat-card"><div class="prod-stat-label">Most Sold</div><div class="prod-stat-value">—</div></div>
         </div>
+
+        <!-- Filter bar -->
+        <div class="products-filter-bar">
+          <div class="toggle-group">
+            <button class="toggle-btn active prod-filter-store" data-store="all" onclick="setProductStore('all')">All</button>
+            <button class="toggle-btn prod-filter-store" data-store="LT" onclick="setProductStore('LT')">LT</button>
+            <button class="toggle-btn prod-filter-store" data-store="DK" onclick="setProductStore('DK')">DK</button>
+          </div>
+          <div class="toggle-group">
+            <button class="toggle-btn active prod-filter-type" data-type="all" onclick="setProductType('all')">All types</button>
+            <button class="toggle-btn prod-filter-type" data-type="ball" onclick="setProductType('ball')">Ball moss</button>
+            <button class="toggle-btn prod-filter-type" data-type="mix" onclick="setProductType('mix')">Mix</button>
+          </div>
+          <select class="products-sort-select" onchange="setProductSort(this.value)">
+            <option value="margin_pct">Sort: Margin %</option>
+            <option value="gross_profit">Sort: Profit €</option>
+            <option value="sell_price_eur">Sort: Price</option>
+            <option value="name">Sort: Name</option>
+            <option value="units_sold">Sort: Most Sold</option>
+          </select>
+        </div>
+
+        <!-- Table -->
+        <div class="products-table-wrap">
+          <table class="products-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Store</th>
+                <th>Moss Type</th>
+                <th class="text-right">Cost</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Profit</th>
+                <th>Margin</th>
+                <th class="text-right">Sold*</th>
+                <th class="text-right">Revenue*</th>
+              </tr>
+            </thead>
+            <tbody id="products-tbody">
+              <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-secondary)">Kraunama…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:8px">* Approximate — matched from WooCommerce order line items (last 365 days)</p>
+
       </div>
     </div>
 
@@ -889,6 +937,52 @@
   </div>
 </div>
 
+<!-- ── Product → B2B Order Modal ── -->
+<div id="product-b2b-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add to B2B Order</h3>
+      <button class="btn-icon" onclick="closeProductB2bModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="product-b2b-form" onsubmit="return false">
+        <div class="form-group">
+          <label>Product</label>
+          <input type="text" id="pb2b-product-name" readonly style="background:var(--bg-hover);color:var(--text-secondary)">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" id="pb2b-qty" min="1" max="99" value="1" style="width:100%">
+          </div>
+          <div class="form-group">
+            <label>Price per unit (€)</label>
+            <input type="number" id="pb2b-price" min="0" step="0.01" style="width:100%">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Customer Name *</label>
+          <input type="text" id="pb2b-customer" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label>Order Date *</label>
+          <input type="date" id="pb2b-date">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" id="pb2b-notes" placeholder="Optional notes…">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeProductB2bModal()">Atšaukti</button>
+      <button class="btn-primary" id="pb2b-submit-btn" onclick="submitProductB2b()">Create B2B Order</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -898,6 +992,7 @@
 <script src="/js/accounting.js"></script>
 <script src="/js/calculator.js"></script>
 <script src="/js/production.js"></script>
+<script src="/js/products.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
