@@ -6,11 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Gamyba">
-  <meta name="theme-color" content="#0f1117">
+  <meta name="theme-color" content="#f5f5f7">
   <title>Mossbloom CRM</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="manifest" href="/manifest.json">
 </head>
@@ -23,7 +20,7 @@
   <!-- ── Sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-logo">M</div>
+      <div class="brand-logo"><i data-lucide="leaf" style="width:18px;height:18px;color:#34c759;stroke-width:2;"></i></div>
       <div class="brand-text">
         <span class="brand-name">Mossbloom</span>
         <span class="brand-sub">CRM</span>
@@ -31,10 +28,13 @@
     </div>
 
     <nav class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
       <a href="#" class="nav-item" data-view="accounting">
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         Dashboard
       </a>
+
+      <div class="nav-section-label">Commerce</div>
       <a href="#" class="nav-item" data-view="orders">
         <i data-lucide="shopping-bag" class="nav-icon"></i>
         Orders
@@ -47,10 +47,14 @@
         <i data-lucide="git-pull-request" class="nav-icon"></i>
         Sandoriai
       </a>
+
+      <div class="nav-section-label">Operations</div>
       <a href="#" class="nav-item" data-view="products">
-        <i data-lucide="box" class="nav-icon"></i>
+        <i data-lucide="package" class="nav-icon"></i>
         Products
       </a>
+
+      <div class="nav-section-label">Tools</div>
       <a href="#" class="nav-item" data-view="calculator">
         <i data-lucide="calculator" class="nav-icon"></i>
         Kainodara

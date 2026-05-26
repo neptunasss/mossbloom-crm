@@ -115,7 +115,7 @@ function renderProdCard(c) {
   const notesText = c.notes || '';
 
   return `
-<div class="prod-card" data-id="${c.id}" draggable="true">
+<div class="prod-card" data-id="${c.id}" data-stage="${c.stage}" draggable="true">
   <div class="prod-card-drag-handle">⠿</div>
   ${imgHtml}
   <div class="prod-card-body">

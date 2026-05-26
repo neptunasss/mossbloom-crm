@@ -4,26 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mossbloom CRM — Sign In</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d1117;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      background: #f5f5f7;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      -webkit-font-smoothing: antialiased;
     }
 
     .card {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 20px;
       padding: 40px;
       width: 100%;
-      max-width: 360px;
+      max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
     }
 
     .brand {
@@ -34,28 +39,27 @@
     .brand-logo {
       width: 56px;
       height: 56px;
-      background: linear-gradient(135deg, #2ea043, #56d364);
-      border-radius: 14px;
+      background: #e8faf0;
+      border-radius: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 26px;
-      font-weight: 800;
-      color: #fff;
       margin: 0 auto 16px;
-      letter-spacing: -1px;
     }
+
+    .brand-logo svg { color: #34c759; }
 
     .brand h1 {
       font-size: 20px;
       font-weight: 700;
-      color: #e6edf3;
+      color: #1d1d1f;
       margin-bottom: 4px;
+      letter-spacing: -0.02em;
     }
 
     .brand p {
       font-size: 13px;
-      color: #8b949e;
+      color: #86868b;
     }
 
     .form-group {
@@ -64,37 +68,37 @@
 
     label {
       display: block;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 500;
-      color: #c9d1d9;
+      color: #1d1d1f;
       margin-bottom: 6px;
     }
 
     input {
       width: 100%;
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 10px 12px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(0,0,0,0.14);
+      border-radius: 8px;
+      padding: 9px 12px;
       font-size: 14px;
-      color: #e6edf3;
+      color: #1d1d1f;
       outline: none;
       transition: border-color 0.15s, box-shadow 0.15s;
       font-family: inherit;
     }
 
-    input::placeholder { color: #484f58; }
+    input::placeholder { color: #aeaeb2; }
 
     input:focus {
-      border-color: #1f6feb;
-      box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.15);
+      border-color: #007aff;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
     }
 
     .error {
-      background: rgba(218, 54, 51, 0.15);
-      border: 1px solid #da3633;
-      color: #ff7b72;
-      border-radius: 6px;
+      background: #fff0ef;
+      border: 1px solid rgba(255,59,48,0.3);
+      color: #cc2f26;
+      border-radius: 8px;
       padding: 10px 12px;
       font-size: 13px;
       margin-bottom: 14px;
@@ -102,30 +106,31 @@
 
     .btn {
       width: 100%;
-      background: #238636;
+      background: #007aff;
       color: #fff;
-      border: 1px solid rgba(240, 246, 252, 0.1);
-      border-radius: 6px;
+      border: none;
+      border-radius: 8px;
       padding: 11px;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       transition: background 0.15s;
       font-family: inherit;
       margin-top: 4px;
+      letter-spacing: -0.01em;
     }
 
-    .btn:hover { background: #2ea043; }
-    .btn:active { background: #1a7f37; }
+    .btn:hover  { background: #0071e3; }
+    .btn:active { background: #0066cc; }
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .stores {
       display: flex;
       justify-content: center;
-      gap: 12px;
+      gap: 14px;
       margin-top: 28px;
       padding-top: 20px;
-      border-top: 1px solid #21262d;
+      border-top: 1px solid rgba(0,0,0,0.08);
     }
 
     .store-dot {
@@ -133,7 +138,7 @@
       align-items: center;
       gap: 5px;
       font-size: 11px;
-      color: #6e7681;
+      color: #86868b;
     }
 
     .dot {
@@ -146,7 +151,9 @@
 <body>
   <div class="card">
     <div class="brand">
-      <div class="brand-logo">M</div>
+      <div class="brand-logo">
+        <i data-lucide="leaf" style="width:26px;height:26px;stroke-width:2;"></i>
+      </div>
       <h1>Mossbloom CRM</h1>
       <p>Sign in to your account</p>
     </div>
@@ -165,14 +172,15 @@
     </form>
 
     <div class="stores">
-      <span class="store-dot"><span class="dot" style="background:#2ea043"></span>bloom.lt</span>
-      <span class="store-dot"><span class="dot" style="background:#1f6feb"></span>mossbloom.dk</span>
-      <span class="store-dot"><span class="dot" style="background:#da3633"></span>mossbloom.de</span>
+      <span class="store-dot"><span class="dot" style="background:#34c759"></span>bloom.lt</span>
+      <span class="store-dot"><span class="dot" style="background:#007aff"></span>mossbloom.dk</span>
+      <span class="store-dot"><span class="dot" style="background:#ff3b30"></span>mossbloom.de</span>
     </div>
   </div>
 
   <script>
-    // Redirect if already authenticated
+    lucide.createIcons();
+
     fetch('/api/auth/status').then(r => r.json()).then(d => {
       if (d.authenticated) window.location.href = '/';
     }).catch(() => {});

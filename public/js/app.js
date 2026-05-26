@@ -148,9 +148,11 @@ function renderOrders(orders) {
       ${SOURCE_OPTS.map(s => `<option value="${s}"${s === curSrc ? ' selected' : ''}>${s || '—'}</option>`).join('')}
     </select>`;
 
+    const storeClass = { bloom_lt: 'lt', mossbloom_dk: 'dk', mossbloom_de: 'de', b2b: 'b2b' }[o.store_id] || 'default';
+
     return `<tr class="${isB2b ? 'b2b-row' : ''}">
       <td>
-        <span class="store-badge">${store.label}</span>
+        <span class="store-badge store-badge-${storeClass}">${store.label}</span>
       </td>
       <td class="col-order">${orderNum}</td>
       <td class="col-customer">${customerCell}</td>
@@ -294,16 +296,19 @@ function renderCustomerPanel(data) {
     .map(([cur, amt]) => fmtTotal(amt, cur))
     .join(' + ') || '—';
 
+  const storeClassMap = { bloom_lt: 'lt', mossbloom_dk: 'dk', mossbloom_de: 'de', b2b: 'b2b' };
   const storeLabels = (data.stores || []).map(sid => {
     const s = STORES[sid];
-    return s ? `<span class="store-badge" style="background:${s.color}1a;color:${s.color};border:1px solid ${s.color}40">${s.label}</span>` : sid;
+    const cls = storeClassMap[sid] || 'default';
+    return s ? `<span class="store-badge store-badge-${cls}">${s.label}</span>` : sid;
   }).join(' ');
 
   const orderRows = (data.orders || []).map(o => {
-    const store  = STORES[o.store_id] || { color: '#888', label: '?' };
+    const store  = STORES[o.store_id] || { label: '?' };
+    const cls    = storeClassMap[o.store_id] || 'default';
     const status = STATUS_STYLE[o.status] || { bg: '#f1f5f9', text: '#475569' };
     return `<div class="panel-order-row">
-      <span class="store-badge" style="background:${store.color}1a;color:${store.color};border:1px solid ${store.color}40;margin-right:6px">${store.label}</span>
+      <span class="store-badge store-badge-${cls}" style="margin-right:6px">${store.label}</span>
       <span class="panel-order-num">#${o.order_id}</span>
       <span class="panel-order-date">${fmtDate(o.date_created)}</span>
       <span class="status-badge" style="background:${status.bg};color:${status.text};margin-left:auto">${esc(o.status)}</span>

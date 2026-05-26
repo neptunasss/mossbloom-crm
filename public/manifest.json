@@ -4,8 +4,8 @@
   "description": "Mossbloom gamybos eilė",
   "start_url": "/?view=production",
   "display": "standalone",
-  "background_color": "#0f1117",
-  "theme_color": "#0f1117",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
   "orientation": "portrait-primary",
   "icons": [
     {
