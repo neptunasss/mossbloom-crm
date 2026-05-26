@@ -27,7 +27,19 @@
       "Bash(python3 -m json.tool)",
       "Bash(curl *)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(npm install *)",
+      "Bash(node *)",
+      "Bash(not exist *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\PCBOX\\\\Documents\\\\mossbloom-crm\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Sort-Object)",
+      "Bash(railway status *)"
     ]
   }
 }

@@ -83,12 +83,13 @@ async function loadAccounting(silent = false) {
 
     renderRatesNote(data.rate);
     renderStats(data.stats);
-    renderChannelBreakdown(data.stores, data.period?.label);
+    renderStoreProfitBreakdown(data.storeProfit);
     renderExpensesChart(data.expensesByCategory);
-    renderForecastPanel(data.forecast);
+    renderForecastPanel(data.forecast, data.stats?.pvm);
     renderEntries(acctEntries);
 
-    document.getElementById('acct-stores-period').textContent = data.period.label || '';
+    const storesPeriodEl = document.getElementById('acct-stores-period');
+    if (storesPeriodEl) storesPeriodEl.textContent = data.period.label || '';
     document.getElementById('acct-tx-count').textContent =
       `${data.total} sandorių · ${data.period.from} – ${data.period.to}`;
     document.getElementById('header-count').textContent =
@@ -107,8 +108,15 @@ function fmtEUR(v) {
   return `€${parseFloat(v || 0).toLocaleString('lt-LT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function fmtEURCompact(v) {
+  const n = parseFloat(v || 0);
+  if (Math.abs(n) >= 10000) return `€${(n / 1000).toFixed(1)}k`;
+  if (Math.abs(n) >= 1000)  return `€${(n / 1000).toFixed(1)}k`;
+  return `€${Math.round(n)}`;
+}
+
 function fmtStatValue(val, fmt) {
-  if (fmt === 'eur') return fmtEUR(val);
+  if (fmt === 'eur') return fmtEURCompact(val);
   if (fmt === 'pct') return `${parseFloat(val || 0).toFixed(1)}%`;
   if (fmt === 'int') return String(Math.round(val || 0));
   return String(val);
@@ -158,13 +166,12 @@ function renderStats(stats) {
 
   grid.innerHTML = STAT_CARDS.map(card => {
     if (card.isPvm) {
-      const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, monthName: '' };
-      const monthLabel = pvm.monthName ? `<span class="acct-stat-sublabel">už ${esc(pvm.monthName)}</span>` : '';
-      return `<div class="acct-stat-card acct-stat-pvm" title="PVM 21% nuo pajamų">
-        <span class="acct-stat-label">PVM mokėti ${monthLabel}</span>
-        <div class="acct-stat-value">${fmtEUR(pvm.moketi)}</div>
+      const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, dueLabel: '' };
+      return `<div class="acct-stat-card acct-stat-pvm" title="PVM 21% nuo šio mėnesio pajamų">
+        <span class="acct-stat-label">PVM mokėti</span>
+        <div class="acct-stat-value">${fmtEURCompact(pvm.moketi)}</div>
+        <div class="acct-pvm-detail">${esc(pvm.dueLabel || '')}</div>
         <div class="acct-pvm-detail">Surinktinas: ${fmtEUR(pvm.surinktinas)}</div>
-        <div class="acct-pvm-detail">Sumokėtas: ${fmtEUR(pvm.sumoketas)}</div>
       </div>`;
     }
     const s = stats[card.key] || { value: 0, changePct: 0 };
@@ -354,48 +361,30 @@ function renderExpensesChart(expData) {
   });
 }
 
-// ── Channel breakdown ─────────────────────────────────────────────────────────
+// ── Store profit breakdown ────────────────────────────────────────────────────
 
-const CHANNEL_COLORS = {
-  bloom_lt:     '#22c55e',
-  mossbloom_dk: '#3b82f6',
-  mossbloom_de: '#ef4444',
-  b2b:          '#7c3aed',
-};
+function renderStoreProfitBreakdown(rows) {
+  const tbody = document.getElementById('acct-store-profit-tbody');
+  if (!tbody || !rows?.length) return;
 
-function renderChannelBreakdown(stores, periodLabel) {
-  const el  = document.getElementById('acct-channel-list');
-  const sub = document.getElementById('acct-stores-period');
-  if (sub) sub.textContent = periodLabel || '';
-  if (!el || !stores?.length) return;
-
-  const rows = stores.filter(s => s.id !== 'total');
-  const maxIncome = Math.max(...rows.map(r => r.incomeEUR), 0.01);
-
-  el.innerHTML = rows.map(row => {
-    const barPct = (row.incomeEUR / maxIncome) * 100;
-    const color  = CHANNEL_COLORS[row.id] || '#6b7280';
-    const change = row.changePct;
-    const trendHtml = change == null ? '' :
-      change >= 0 ? `<span class="ch-up">↑ ${change.toFixed(1)}%</span>` :
-                    `<span class="ch-down">↓ ${Math.abs(change).toFixed(1)}%</span>`;
-    return `<div class="channel-row">
-      <div class="ch-header">
-        <span class="ch-name">${esc(row.name)}</span>
-        ${trendHtml}
-        <span class="ch-orders">${row.orders} užs.</span>
-        <span class="ch-val">${fmtEUR(row.incomeEUR)}</span>
-      </div>
-      <div class="ch-bar-wrap">
-        <div class="ch-bar" style="width:${barPct.toFixed(1)}%;background:${color}30;border-right:3px solid ${color}"></div>
-      </div>
-    </div>`;
+  tbody.innerHTML = rows.map(row => {
+    const isTotal  = row.id === 'total';
+    const profitCls = row.profitEUR >= 0 ? 'acct-val-income' : 'acct-val-loss';
+    const marginCls = row.marginPct >= 15 ? 'acct-val-income' : row.marginPct >= 0 ? 'acct-val-neutral' : 'acct-val-loss';
+    return `<tr class="${isTotal ? 'acct-row-total' : ''}">
+      <td>${esc(row.name)}</td>
+      <td class="num">${row.orders}</td>
+      <td class="num acct-val-income">${fmtEUR(row.revenueEUR)}</td>
+      <td class="num acct-muted">${fmtEUR(row.costsEUR)}</td>
+      <td class="num ${profitCls}">${fmtEUR(row.profitEUR)}</td>
+      <td class="num ${marginCls}">${row.marginPct.toFixed(1)}%</td>
+    </tr>`;
   }).join('');
 }
 
 // ── Forecast panel ────────────────────────────────────────────────────────────
 
-function renderForecastPanel(forecast) {
+function renderForecastPanel(forecast, pvm) {
   const el = document.getElementById('acct-forecast-panel');
   if (!el || !forecast) return;
 
@@ -404,14 +393,18 @@ function renderForecastPanel(forecast) {
     ? `<span class="ch-up">+${fmtEUR(gapToTarget)}</span>`
     : `<span class="ch-down">−${fmtEUR(Math.abs(gapToTarget))}</span>`;
   const actionCls = gapToTarget >= 0 ? 'on-track' : gapToTarget >= -1000 ? 'slightly-behind' : 'far-behind';
+  const pvmLine = pvm?.dueLabel
+    ? `<div class="forecast-item"><span>${esc(pvm.dueLabel)}</span><span class="forecast-val">${fmtEUR(pvm.moketi)}</span></div>`
+    : '';
 
   el.innerHTML = `
     <div class="forecast-item"><span>Pajamos šį mėnesį</span><span class="forecast-val">${fmtEUR(revenueNow)}</span></div>
     <div class="forecast-item"><span>Dienos</span><span class="forecast-val">${daysPassed}/${daysInMonth} (${daysPct}%)</span></div>
-    <div class="forecast-item"><span>Prognozė mėn. pabaigai</span><span class="forecast-val">${fmtEUR(projected)}</span></div>
+    <div class="forecast-item"><span>Prognozė</span><span class="forecast-val">${fmtEUR(projected)}</span></div>
     <div class="forecast-item"><span>Metinis tempas</span><span class="forecast-val">${fmtEUR(yearlyPace)}/m.</span></div>
     <div class="forecast-item"><span>Tikslas (€100k/m.)</span><span class="forecast-val">${fmtEUR(targetMonthly)}/mėn</span></div>
     <div class="forecast-item"><span>Skirtumas</span><span class="forecast-val">${gapFmt}</span></div>
+    ${pvmLine}
     <div class="forecast-action ${actionCls}">${esc(action)}</div>`;
 }
 
@@ -458,14 +451,12 @@ function renderEntries(entries) {
     const amtCls   = isIncome ? 'acct-amt-in' : 'acct-amt-out';
     const amtPfx   = isIncome ? '+' : '−';
     const srcBadge = SOURCE_BADGE[e.source] || '';
-    const notesHtml = e.notes ? `<div class="acct-tx-notes">${esc(e.notes)}</div>` : '';
 
     return `<tr>
       <td class="acct-tx-date">${fmtDate(e.entry_date)}</td>
       <td>
         <div class="acct-tx-desc">${esc(e.description)}${srcBadge}</div>
         <div class="acct-tx-cat">${esc(e.category || 'Kita')}</div>
-        ${notesHtml}
       </td>
       <td>${storeBadge(e)}</td>
       <td class="num ${amtCls}">${amtPfx}${fmtEUR(e.amountEUR)}</td>
@@ -588,6 +579,17 @@ async function deleteAcctEntry(id) {
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   }
+}
+
+// ── Transactions toggle ───────────────────────────────────────────────────────
+
+function toggleTransactions() {
+  const panel = document.getElementById('acct-tx-panel');
+  const btn   = document.getElementById('acct-toggle-tx-btn');
+  if (!panel) return;
+  const nowHidden = panel.hidden;
+  panel.hidden = !nowHidden;
+  if (btn) btn.textContent = nowHidden ? 'Slėpti sandorius ↑' : 'Rodyti sandorius ↓';
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

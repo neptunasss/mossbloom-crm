@@ -376,6 +376,63 @@ function buildChartMonths(db, rate) {
   });
 }
 
+function buildStoreProfitBreakdown(entries, rate) {
+  const totalZaliavos = entries
+    .filter(e => e.type === 'expense' && e.category === 'Žaliavos')
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+
+  const facebookAds = entries
+    .filter(e => e.type === 'expense' && e.category === 'Reklama' && (e.description || '').toUpperCase().includes('FACEBOOK'))
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+
+  const googleAds = entries
+    .filter(e => e.type === 'expense' && e.category === 'Reklama' && (e.description || '').toUpperCase().includes('GOOGLE'))
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+
+  const revenues = {
+    bloom_lt:     storeIncome(entries, 'bloom_lt', rate),
+    mossbloom_dk: storeIncome(entries, 'mossbloom_dk', rate),
+    mossbloom_de: storeIncome(entries, 'mossbloom_de', rate),
+    b2b:          storeIncome(entries, 'b2b', rate),
+  };
+  const totalWcRevenue = revenues.bloom_lt + revenues.mossbloom_dk + revenues.mossbloom_de;
+  const totalRevenue   = Object.values(revenues).reduce((s, v) => s + v, 0);
+
+  const STORE_NAMES = { bloom_lt: 'bloom.lt', mossbloom_dk: 'mossbloom.dk', mossbloom_de: 'mossbloom.de', b2b: 'B2B' };
+
+  const rows = WC_STORES.concat(['b2b']).map(storeId => {
+    const rev = revenues[storeId];
+    const zaliavosBase  = totalRevenue > 0 ? totalRevenue : 1;
+    const zaliavosShare = (rev / zaliavosBase) * totalZaliavos;
+    const directAds     = storeId === 'bloom_lt' ? facebookAds : storeId === 'mossbloom_dk' ? googleAds : 0;
+    const costs         = directAds + zaliavosShare;
+    const profit        = rev - costs;
+    return {
+      id:         storeId,
+      name:       STORE_NAMES[storeId],
+      orders:     storeOrderCount(entries, storeId),
+      revenueEUR: rev,
+      costsEUR:   costs,
+      profitEUR:  profit,
+      marginPct:  rev > 0 ? (profit / rev) * 100 : 0,
+    };
+  });
+
+  const totRev    = rows.reduce((s, r) => s + r.revenueEUR, 0);
+  const totCosts  = rows.reduce((s, r) => s + r.costsEUR, 0);
+  const totProfit = totRev - totCosts;
+  rows.push({
+    id: 'total', name: 'TOTAL',
+    orders:     rows.reduce((s, r) => s + r.orders, 0),
+    revenueEUR: totRev,
+    costsEUR:   totCosts,
+    profitEUR:  totProfit,
+    marginPct:  totRev > 0 ? (totProfit / totRev) * 100 : 0,
+  });
+
+  return rows;
+}
+
 function statBlock(current, previous, sparkline) {
   return {
     value: current,
@@ -414,10 +471,10 @@ async function buildDashboard(db, query) {
   const roiValue   = curAgg.expensesEUR  > 0 ? (curAgg.profitEUR  / curAgg.expensesEUR)  * 100 : null;
   const prevRoiVal = prevAgg.expensesEUR > 0 ? (prevAgg.profitEUR / prevAgg.expensesEUR) * 100 : null;
 
-  // PVM: always for previous calendar month, regardless of selected period
+  // PVM: current calendar month, due on the 15th of next month
   const nowDate = new Date();
-  const pvmMonthDate    = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
-  const pvmMonthEndDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), 0);
+  const pvmMonthDate    = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+  const pvmMonthEndDate = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0);
   const pvmFrom = toDateStr(pvmMonthDate);
   const pvmTo   = toDateStr(pvmMonthEndDate);
   const pvmEntries   = fetchEntries(pvmFrom, pvmTo);
@@ -440,7 +497,9 @@ async function buildDashboard(db, query) {
   const pvmSumoketas   = pvmEntries
     .filter(e => e.category === 'Mokesčiai' && (e.description || '').toUpperCase().includes('PVM'))
     .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
-  const pvmMonthName = pvmMonthDate.toLocaleDateString('lt-LT', { month: 'long' });
+  const LT_MONTH_GEN = ['sausio','vasario','kovo','balandžio','gegužės','birželio','liepos','rugpjūčio','rugsėjo','spalio','lapkričio','gruodžio'];
+  const nextMonthDate = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1);
+  const pvmDueLabel   = `Mokėti iki ${LT_MONTH_GEN[nextMonthDate.getMonth()]} 15`;
 
   // Forecast (always based on current calendar month)
   const daysInMonth  = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0).getDate();
@@ -464,7 +523,7 @@ async function buildDashboard(db, query) {
     orderCount:   statBlock(curAgg.orderCount,      prevAgg.orderCount,      []),
     avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     []),
     roi:          statBlock(roiValue, prevRoiVal, []),
-    pvm:          { surinktinas: pvmSurinktinas, sumoketas: pvmSumoketas, moketi: pvmSurinktinas - pvmSumoketas, monthName: pvmMonthName },
+    pvm:          { surinktinas: pvmSurinktinas, sumoketas: pvmSumoketas, moketi: pvmSurinktinas - pvmSumoketas, dueLabel: pvmDueLabel },
   };
 
   const forecast = {
@@ -539,6 +598,7 @@ async function buildDashboard(db, query) {
     forecast,
     chart: { months: buildChartMonths(db, rate) },
     stores: buildStoreBreakdown(db, currentAll, prevAll, rate, period, prev),
+    storeProfit: buildStoreProfitBreakdown(currentAll, rate),
     expensesByCategory: expensesByCategory(currentAll, rate),
     entries,
     total: entries.length,

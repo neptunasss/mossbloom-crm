@@ -1490,11 +1490,17 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 .acct-stat-card {
   background: #1a1d27;
   border: 1px solid #2a2d3a;
-  border-radius: 10px;
-  padding: 16px 18px 14px;
+  border-radius: 12px;
+  padding: 24px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.acct-stat-card:hover {
+  border-color: #3d4155;
+  box-shadow: 0 0 0 1px #3d415530;
 }
 
 .acct-stat-top {
@@ -1505,7 +1511,7 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 }
 
 .acct-stat-label {
-  font-size: 10px;
+  font-size: 0.7rem;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1513,10 +1519,10 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 }
 
 .acct-stat-value {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 2.2rem;
+  font-weight: 700;
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .acct-stat-sublabel {
@@ -1666,7 +1672,9 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
   background: transparent;
 }
 
-.acct-val-income { color: #22c55e; font-weight: 600; }
+.acct-val-income  { color: #22c55e; font-weight: 600; }
+.acct-val-loss    { color: #ef4444; font-weight: 600; }
+.acct-val-neutral { color: #9ca3af; }
 
 .acct-tx-filters {
   display: flex;
@@ -1779,6 +1787,34 @@ body.acct-mode .sidebar-toggle:hover { color: #e5e7eb; }
 .forecast-action.on-track       { background: rgba(34,197,94,0.08);  border: 1px solid rgba(34,197,94,0.25);  color: #22c55e; }
 .forecast-action.slightly-behind { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #f59e0b; }
 .forecast-action.far-behind      { background: rgba(239,68,68,0.08);  border: 1px solid rgba(239,68,68,0.25);  color: #ef4444; }
+
+/* Transactions toggle */
+.acct-toggle-tx-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  margin-bottom: 8px;
+  background: #1a1d27;
+  border: 1px solid #2a2d3a;
+  border-radius: 10px;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.acct-toggle-tx-btn:hover { border-color: #3d4155; color: #e5e7eb; }
+
+/* Products placeholder */
+.products-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  text-align: center;
+}
 
 .acct-cat {
   display: inline-block;

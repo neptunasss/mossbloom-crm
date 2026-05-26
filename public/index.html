@@ -42,6 +42,12 @@
         </svg>
         Sandoriai
       </a>
+      <a href="#" class="nav-item" data-view="products">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>
+        </svg>
+        Products
+      </a>
       <a href="#" class="nav-item" data-view="calculator">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4"/>
@@ -316,10 +322,21 @@
         <div class="acct-row-middle">
           <div class="acct-panel acct-col-channel">
             <div class="acct-panel-head">
-              <h3 class="acct-panel-title">Pajamos pagal kanalą</h3>
-              <span class="acct-panel-sub" id="acct-stores-period"></span>
+              <h3 class="acct-panel-title">Pelningumo suvestinė</h3>
             </div>
-            <div id="acct-channel-list"></div>
+            <div class="acct-table-scroll">
+              <table class="acct-table">
+                <thead><tr>
+                  <th>Parduotuvė</th>
+                  <th class="num">Užs.</th>
+                  <th class="num">Pajamos</th>
+                  <th class="num">Išlaidos</th>
+                  <th class="num">Pelnas</th>
+                  <th class="num">Marža</th>
+                </tr></thead>
+                <tbody id="acct-store-profit-tbody"></tbody>
+              </table>
+            </div>
           </div>
 
           <div class="acct-panel acct-col-expenses" id="acct-expenses-panel">
@@ -341,7 +358,9 @@
           </div>
         </div>
 
-        <div class="acct-panel acct-tx-panel">
+        <button class="acct-toggle-tx-btn" id="acct-toggle-tx-btn" onclick="toggleTransactions()">Rodyti sandorius ↓</button>
+
+        <div class="acct-panel acct-tx-panel" id="acct-tx-panel" hidden>
           <div class="acct-panel-head">
             <h3 class="acct-panel-title">Sandoriai</h3>
             <span class="acct-panel-sub" id="acct-tx-count"></span>
@@ -392,6 +411,17 @@
               <p>Šiuo laikotarpiu sandorių nėra.</p>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Products View ── -->
+    <div class="view" id="view-products" hidden>
+      <div class="content-body">
+        <div class="products-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.3"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          <h3 style="color:#4b5563;margin-top:16px;font-size:18px">Netrukus...</h3>
+          <p style="color:#6b7280;margin-top:8px;font-size:13px">Produktų katalogas bus prieinamas netrukus.</p>
         </div>
       </div>
     </div>

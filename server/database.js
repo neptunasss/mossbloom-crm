@@ -129,6 +129,8 @@ try { db.exec("UPDATE accounting_entries SET category='Reklama' WHERE type='expe
 try { db.exec("UPDATE accounting_entries SET category='Siuntimas' WHERE type='expense' AND description LIKE '%SIUNTIMO%'"); } catch {}
 try { db.exec("UPDATE accounting_entries SET category='Paslaugos' WHERE type='expense' AND description LIKE '%B2B PASLAUGOS%'"); } catch {}
 try { db.exec("UPDATE accounting_entries SET category='Kitos išlaidos' WHERE type='expense' AND (description LIKE '%KITOS PREKE%' OR description LIKE '%KITOS IŠLAIDOS%' OR description LIKE '%KITOS ISLAIDOS%')"); } catch {}
+// Clean up (SF: TRUE/FALSE) suffix from imported descriptions
+try { db.exec("UPDATE accounting_entries SET description = REPLACE(REPLACE(description, ' (SF: FALSE)', ''), ' (SF: TRUE)', '') WHERE description LIKE '%(SF:%'"); } catch {}
 
 // Migrate old deal statuses → pipeline statuses
 db.exec(`
