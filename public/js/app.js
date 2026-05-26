@@ -32,10 +32,11 @@ const state = {
 
 document.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
-  await Promise.all([loadSyncStatus(), loadOrders()]);
+  await Promise.all([loadSyncStatus()]);
   setupListeners();
   initDeals();
   initAccounting();
+  switchView('accounting');
 });
 
 async function checkAuth() {
@@ -60,7 +61,7 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Apskaita', calculator: 'Quote Calculator' };
+  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', calculator: 'Quote Calculator' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.body.classList.toggle('acct-mode', view === 'accounting');
 

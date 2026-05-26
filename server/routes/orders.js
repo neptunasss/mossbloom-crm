@@ -37,11 +37,12 @@ router.get('/', requireAuth, (req, res) => {
     wcOrders = db.prepare(query).all(...params);
   }
 
-  // B2B manual orders
+  // B2B orders — from b2b_orders table + accounting_entries that have no b2b_orders record
   let b2bOrders = [];
   const includeB2b = !store || store === 'all' || store === 'b2b';
   const statusOk   = !status || status === 'all' || status === 'completed';
   if (includeB2b && statusOk) {
+    // Orders created via UI button (b2b_orders table)
     let b2bQuery  = 'SELECT * FROM b2b_orders WHERE 1=1';
     const b2bArgs = [];
     if (search) {
@@ -50,20 +51,51 @@ router.get('/', requireAuth, (req, res) => {
       b2bArgs.push(s, s);
     }
     b2bQuery += ' ORDER BY order_date DESC';
-    b2bOrders = db.prepare(b2bQuery).all(...b2bArgs).map(o => ({
-      store_id:      'b2b',
-      order_id:      o.id,
-      customer_name: o.customer_name,
+    const uiB2b = db.prepare(b2bQuery).all(...b2bArgs);
+    const uiB2bAcctIds = new Set(uiB2b.map(o => o.accounting_id).filter(Boolean));
+
+    b2bOrders = uiB2b.map(o => ({
+      store_id:       'b2b',
+      order_id:       o.id,
+      customer_name:  o.customer_name,
       customer_email: '',
-      status:        'completed',
-      total:         String(o.amount),
-      currency:      o.currency || 'EUR',
-      date_created:  o.order_date + 'T00:00:00',
+      status:         'completed',
+      total:          String(o.amount),
+      currency:       o.currency || 'EUR',
+      date_created:   o.order_date + 'T00:00:00',
       producer_status: null,
-      is_b2b:        true,
-      description:   o.description,
-      has_invoice:   o.has_invoice,
+      is_b2b:         true,
+      description:    o.description,
+      has_invoice:    o.has_invoice,
     }));
+
+    // B2B income from accounting_entries without a b2b_orders link (e.g. b2b_import)
+    let aeQuery  = `SELECT id, description, amount, currency, entry_date, notes, reference_id
+      FROM accounting_entries
+      WHERE type='income' AND source IN ('b2b','b2b_import')`;
+    const aeArgs = [];
+    if (search) {
+      aeQuery += ' AND description LIKE ?';
+      aeArgs.push(`%${search}%`);
+    }
+    aeQuery += ' ORDER BY entry_date DESC';
+    const aeB2b = db.prepare(aeQuery).all(...aeArgs)
+      .filter(e => !uiB2bAcctIds.has(e.id));
+
+    b2bOrders.push(...aeB2b.map(e => ({
+      store_id:       'b2b',
+      order_id:       `ae-${e.id}`,
+      customer_name:  e.description || 'B2B',
+      customer_email: '',
+      status:         'completed',
+      total:          String(e.amount),
+      currency:       e.currency || 'EUR',
+      date_created:   e.entry_date + 'T00:00:00',
+      producer_status: null,
+      is_b2b:         true,
+      description:    e.description,
+      has_invoice:    e.notes?.includes('SF') ? 1 : 0,
+    })));
   }
 
   const allOrders = [...b2bOrders, ...wcOrders].sort((a, b) =>

@@ -401,23 +401,82 @@ async function buildDashboard(db, query) {
   const curAgg  = aggregateEntries(db, currentAll, period.from, period.to, rate);
   const prevAgg = aggregateEntries(db, prevAll, prev.from, prev.to, rate);
 
+  // Gross profit = revenue − raw materials (Žaliavos)
+  const materialsEUR = currentAll
+    .filter(e => e.type === 'expense' && e.category === 'Žaliavos')
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+  const prevMaterialsEUR = prevAll
+    .filter(e => e.type === 'expense' && e.category === 'Žaliavos')
+    .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+  const grossProfitEUR     = curAgg.incomeEUR  - materialsEUR;
+  const prevGrossProfitEUR = prevAgg.incomeEUR - prevMaterialsEUR;
+
   const roiValue   = curAgg.expensesEUR  > 0 ? (curAgg.profitEUR  / curAgg.expensesEUR)  * 100 : null;
   const prevRoiVal = prevAgg.expensesEUR > 0 ? (prevAgg.profitEUR / prevAgg.expensesEUR) * 100 : null;
 
-  const pvmSurinktinas = curAgg.incomeEUR * 21 / 121;
-  const pvmSumoketas   = currentAll
+  // PVM: always for previous calendar month, regardless of selected period
+  const nowDate = new Date();
+  const pvmMonthDate    = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
+  const pvmMonthEndDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), 0);
+  const pvmFrom = toDateStr(pvmMonthDate);
+  const pvmTo   = toDateStr(pvmMonthEndDate);
+  const pvmEntries   = fetchEntries(pvmFrom, pvmTo);
+  const pvmSyncedIds = new Set(pvmEntries.filter(e => e.source === 'woocommerce').map(e => e.reference_id));
+  const pvmWcRows = db.prepare(`
+    SELECT total, currency, order_id FROM orders_cache
+    WHERE substr(date_created, 1, 10) >= ? AND substr(date_created, 1, 10) <= ?
+      AND status NOT IN ('cancelled','refunded','failed')
+  `).all(pvmFrom, pvmTo);
+  let pvmIncomeEUR = 0;
+  for (const e of pvmEntries) {
+    if (e.type === 'income') pvmIncomeEUR += fx.toEur(e.amount, e.currency, rate);
+  }
+  for (const r of pvmWcRows) {
+    if (!pvmSyncedIds.has(String(r.order_id))) {
+      pvmIncomeEUR += fx.toEur(parseFloat(r.total) || 0, r.currency, rate);
+    }
+  }
+  const pvmSurinktinas = pvmIncomeEUR * 21 / 121;
+  const pvmSumoketas   = pvmEntries
     .filter(e => e.category === 'Mokesčiai' && (e.description || '').toUpperCase().includes('PVM'))
     .reduce((sum, e) => sum + fx.toEur(e.amount, e.currency, rate), 0);
+  const pvmMonthName = pvmMonthDate.toLocaleDateString('lt-LT', { month: 'long' });
+
+  // Forecast (always based on current calendar month)
+  const daysInMonth  = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0).getDate();
+  const daysPassed   = nowDate.getDate();
+  const projected    = daysPassed > 0 ? (curAgg.incomeEUR / daysPassed) * daysInMonth : curAgg.incomeEUR;
+  const targetMonthly = 100000 / 12;
+  const gapToTarget  = projected - targetMonthly;
+  const shortfall    = -gapToTarget;
+  let forecastAction;
+  if (shortfall > 3000)      forecastAction = 'Reikia didelio B2B užsakymo';
+  else if (shortfall > 1000) forecastAction = 'Reikia 2-3 papildomų užsakymų';
+  else if (shortfall > 0)    forecastAction = 'Arti tikslo, dar vienas užsakymas';
+  else                       forecastAction = 'Tikslas pasiektas!';
 
   const stats = {
     income:       statBlock(curAgg.incomeEUR,       prevAgg.incomeEUR,       []),
+    grossProfit:  statBlock(grossProfitEUR,          prevGrossProfitEUR,      []),
     expenses:     statBlock(curAgg.expensesEUR,     prevAgg.expensesEUR,     []),
     profit:       statBlock(curAgg.profitEUR,       prevAgg.profitEUR,       []),
     profitMargin: statBlock(curAgg.profitMarginPct, prevAgg.profitMarginPct, []),
     orderCount:   statBlock(curAgg.orderCount,      prevAgg.orderCount,      []),
     avgOrder:     statBlock(curAgg.avgOrderEUR,     prevAgg.avgOrderEUR,     []),
     roi:          statBlock(roiValue, prevRoiVal, []),
-    pvm:          { surinktinas: pvmSurinktinas, sumoketas: pvmSumoketas, moketi: pvmSurinktinas - pvmSumoketas },
+    pvm:          { surinktinas: pvmSurinktinas, sumoketas: pvmSumoketas, moketi: pvmSurinktinas - pvmSumoketas, monthName: pvmMonthName },
+  };
+
+  const forecast = {
+    revenueNow: curAgg.incomeEUR,
+    daysPassed,
+    daysInMonth,
+    daysPct: Math.round((daysPassed / daysInMonth) * 100),
+    projected,
+    yearlyPace: projected * 12,
+    targetMonthly,
+    gapToTarget,
+    action: forecastAction,
   };
 
   // WooCommerce orders from orders_cache — only those not already in accounting_entries
@@ -477,6 +536,7 @@ async function buildDashboard(db, query) {
     period,
     previousPeriod: prev,
     stats,
+    forecast,
     chart: { months: buildChartMonths(db, rate) },
     stores: buildStoreBreakdown(db, currentAll, prevAll, rate, period, prev),
     expensesByCategory: expensesByCategory(currentAll, rate),

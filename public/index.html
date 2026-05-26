@@ -23,7 +23,13 @@
     </div>
 
     <nav class="sidebar-nav">
-      <a href="#" class="nav-item active" data-view="orders">
+      <a href="#" class="nav-item" data-view="accounting">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        Dashboard
+      </a>
+      <a href="#" class="nav-item" data-view="orders">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
           <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
@@ -35,12 +41,6 @@
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
         </svg>
         Sandoriai
-      </a>
-      <a href="#" class="nav-item" data-view="accounting">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-        </svg>
-        Apskaita
       </a>
       <a href="#" class="nav-item" data-view="calculator">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -301,9 +301,8 @@
               <svg id="acct-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/></svg>
               Atnaujinti
             </button>
-            <button type="button" id="acct-sheets-sync-btn" class="acct-btn acct-btn-ghost acct-btn-sheets" onclick="syncSheetsAccounting()" title="Sinchronizuoti su Google Sheets">
+            <button type="button" class="acct-btn acct-btn-ghost" onclick="syncSheetsAccounting()" title="Sinchronizuoti su Google Sheets">
               <svg id="acct-sheets-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg>
-              Sinchronizuoti su Google Sheets
             </button>
             <button type="button" class="acct-btn acct-btn-ghost" onclick="exportCSV()">CSV</button>
             <button type="button" id="acct-add-btn" class="acct-btn acct-btn-add" onclick="openExpenseModal()">+ Pridėti išlaidą</button>
@@ -314,48 +313,31 @@
 
         <div class="acct-stats-grid" id="acct-stats-grid"></div>
 
-        <div class="acct-panel acct-chart-panel">
-          <div class="acct-panel-head">
-            <h3 class="acct-panel-title">Pajamos vs išlaidos</h3>
-            <span class="acct-panel-sub">Paskutiniai 12 mėnesiai</span>
-            <div class="acct-chart-toggle">
-              <button type="button" class="acct-toggle-btn active" id="chart-mode-eur" data-mode="eur">€ EUR</button>
-              <button type="button" class="acct-toggle-btn" id="chart-mode-stores" data-mode="stores">Parduotuvės</button>
+        <div class="acct-row-middle">
+          <div class="acct-panel acct-col-channel">
+            <div class="acct-panel-head">
+              <h3 class="acct-panel-title">Pajamos pagal kanalą</h3>
+              <span class="acct-panel-sub" id="acct-stores-period"></span>
+            </div>
+            <div id="acct-channel-list"></div>
+          </div>
+
+          <div class="acct-panel acct-col-expenses" id="acct-expenses-panel">
+            <div class="acct-panel-head">
+              <h3 class="acct-panel-title">Išlaidų struktūra</h3>
+              <span class="acct-panel-sub">Pagal kategorijas</span>
+            </div>
+            <div class="acct-expense-chart-wrap">
+              <canvas id="acct-expenses-chart"></canvas>
             </div>
           </div>
-          <div class="acct-chart-wrap">
-            <canvas id="acct-chart"></canvas>
-          </div>
-        </div>
 
-        <div class="acct-panel acct-chart-panel" id="acct-expenses-panel" hidden>
-          <div class="acct-panel-head">
-            <h3 class="acct-panel-title">Išlaidų struktūra</h3>
-            <span class="acct-panel-sub">Pagal kategorijas</span>
-          </div>
-          <div class="acct-expense-chart-wrap">
-            <canvas id="acct-expenses-chart"></canvas>
-          </div>
-        </div>
-
-        <div class="acct-panel acct-stores-panel">
-          <div class="acct-panel-head">
-            <h3 class="acct-panel-title">Parduotuvių suvestinė</h3>
-            <span class="acct-panel-sub" id="acct-stores-period"></span>
-          </div>
-          <div class="acct-table-scroll">
-            <table class="acct-table" id="acct-stores-table">
-              <thead>
-                <tr>
-                  <th>Parduotuvė</th>
-                  <th class="num">Užsakymai</th>
-                  <th class="num">Pajamos</th>
-                  <th class="num">% viso</th>
-                  <th class="num">vs ankstesnis</th>
-                </tr>
-              </thead>
-              <tbody id="acct-stores-tbody"></tbody>
-            </table>
+          <div class="acct-panel acct-col-forecast">
+            <div class="acct-panel-head">
+              <h3 class="acct-panel-title">Prognozė</h3>
+              <span class="acct-panel-sub">€100k / metus tikslas</span>
+            </div>
+            <div id="acct-forecast-panel"></div>
           </div>
         </div>
 
