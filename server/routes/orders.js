@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const db = require('../database');
 const { stores, fetchAllStoreOrders } = require('../services/woocommerce');
 const telegram = require('../services/telegram');
+const { addOrderToQueue } = require('../services/production-queue');
 
 // List orders — WooCommerce cache + B2B manual orders
 router.get('/', requireAuth, (req, res) => {
@@ -202,6 +203,13 @@ async function runSync() {
       } catch (txErr) {
         db.exec('ROLLBACK');
         throw txErr;
+      }
+
+      // Add qualifying orders to production queue
+      for (const order of orders) {
+        if (['processing', 'on-hold', 'completed'].includes(order.status)) {
+          addOrderToQueue(store.id, order);
+        }
       }
 
       if (wasSyncedBefore && telegram.configured) {

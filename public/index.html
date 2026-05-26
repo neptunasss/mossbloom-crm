@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gamyba">
+  <meta name="theme-color" content="#0f1117">
   <title>Mossbloom CRM</title>
   <link rel="stylesheet" href="/css/styles.css">
+  <link rel="manifest" href="/manifest.json">
 </head>
 <body>
 
@@ -35,6 +40,12 @@
           <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
         </svg>
         Orders
+      </a>
+      <a href="#" class="nav-item" data-view="production">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+        </svg>
+        Gamyba
       </a>
       <a href="#" class="nav-item" data-view="deals">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -441,6 +452,74 @@
       </div>
     </div>
 
+    <!-- ── Production View ── -->
+    <div class="view" id="view-production" hidden>
+      <div class="prod-view">
+
+        <!-- Mobile stage tabs -->
+        <div class="prod-tabs" id="prod-tabs">
+          <button class="prod-tab active" data-stage="gauta">📥 Gauta <span class="prod-tab-count" id="ptab-gauta">0</span></button>
+          <button class="prod-tab" data-stage="gaminama">🔨 Gaminama <span class="prod-tab-count" id="ptab-gaminama">0</span></button>
+          <button class="prod-tab" data-stage="paruosta">✅ Paruošta <span class="prod-tab-count" id="ptab-paruosta">0</span></button>
+          <button class="prod-tab" data-stage="issista">📦 Išsiųsta <span class="prod-tab-count" id="ptab-issista">0</span></button>
+          <button class="prod-tab" data-stage="pristatyta">🏁 Pristatyta <span class="prod-tab-count" id="ptab-pristatyta">0</span></button>
+        </div>
+
+        <!-- Kanban board -->
+        <div class="prod-board" id="prod-board">
+
+          <div class="prod-col" data-stage="gauta"
+               ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
+            <div class="prod-col-header">
+              <span>📥 Gauta</span>
+              <span class="prod-col-count" id="pcol-gauta">0</span>
+            </div>
+            <div class="prod-cards" id="prod-col-gauta"></div>
+          </div>
+
+          <div class="prod-col" data-stage="gaminama"
+               ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
+            <div class="prod-col-header">
+              <span>🔨 Gaminama</span>
+              <span class="prod-col-count" id="pcol-gaminama">0</span>
+            </div>
+            <div class="prod-cards" id="prod-col-gaminama"></div>
+          </div>
+
+          <div class="prod-col" data-stage="paruosta"
+               ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
+            <div class="prod-col-header">
+              <span>✅ Paruošta</span>
+              <span class="prod-col-count" id="pcol-paruosta">0</span>
+            </div>
+            <div class="prod-cards" id="prod-col-paruosta"></div>
+          </div>
+
+          <div class="prod-col" data-stage="issista"
+               ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
+            <div class="prod-col-header">
+              <span>📦 Išsiųsta</span>
+              <span class="prod-col-count" id="pcol-issista">0</span>
+            </div>
+            <div class="prod-cards" id="prod-col-issista"></div>
+          </div>
+
+          <div class="prod-col" data-stage="pristatyta"
+               ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
+            <div class="prod-col-header">
+              <span>🏁 Pristatyta</span>
+              <span class="prod-col-count" id="pcol-pristatyta">0</span>
+            </div>
+            <div class="prod-cards" id="prod-col-pristatyta"></div>
+          </div>
+
+        </div>
+
+        <div id="prod-loading" class="prod-loading" hidden><div class="prod-loading-bar"></div></div>
+
+      </div>
+    </div>
+
     <!-- ── Products View ── -->
     <div class="view" id="view-products" hidden>
       <div class="content-body">
@@ -810,5 +889,11 @@
 <script src="/js/deals.js"></script>
 <script src="/js/accounting.js"></script>
 <script src="/js/calculator.js"></script>
+<script src="/js/production.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+</script>
 </body>
 </html>

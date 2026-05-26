@@ -61,19 +61,20 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara' };
+  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.body.classList.toggle('acct-mode', view === 'accounting');
 
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
-  document.getElementById('header-count').hidden = view === 'calculator';
+  document.getElementById('header-count').hidden = view === 'calculator' || view === 'production';
 
   if (view === 'orders')     loadOrders();
   if (view === 'deals')      loadDeals();
   if (view === 'accounting') loadAccounting();
   if (view === 'calculator') initCalculator();
+  if (view === 'production') initProduction();
 
   // Close sidebar on mobile after nav click
   document.querySelector('.sidebar').classList.remove('open');

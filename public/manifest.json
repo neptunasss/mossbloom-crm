@@ -1,0 +1,17 @@
+{
+  "name": "Mossbloom Gamyba",
+  "short_name": "Gamyba",
+  "description": "Mossbloom gamybos eilė",
+  "start_url": "/?view=production",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}
