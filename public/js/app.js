@@ -149,10 +149,8 @@ function renderOrders(orders) {
     </select>`;
 
     return `<tr class="${isB2b ? 'b2b-row' : ''}">
-      <td style="border-left:3px solid ${store.color};padding-left:11px">
-        <span class="store-badge" style="background:${store.color}1a;color:${store.color};border:1px solid ${store.color}40">
-          ${store.label}
-        </span>
+      <td>
+        <span class="store-badge">${store.label}</span>
       </td>
       <td class="col-order">${orderNum}</td>
       <td class="col-customer">${customerCell}</td>
@@ -549,9 +547,9 @@ function renderFileList(files) {
       ? `${(f.file_size / 1024 / 1024).toFixed(1)} MB`
       : `${Math.round(f.file_size / 1024)} KB`;
     const isImg = f.mime_type && f.mime_type.startsWith('image/');
-    const icon  = f.mime_type === 'application/pdf' ? '📄' : isImg ? '🖼' : '📎';
+    const iconName = f.mime_type === 'application/pdf' ? 'file-text' : isImg ? 'image' : 'paperclip';
     return `<div class="file-item">
-      <span class="file-icon">${icon}</span>
+      <span class="file-icon"><i data-lucide="${iconName}"></i></span>
       <div class="file-info">
         <a class="file-name" href="/api/files/${f.id}" target="_blank" rel="noopener">${esc(f.original_name)}</a>
         <span class="file-size">${size}</span>
@@ -561,6 +559,7 @@ function renderFileList(files) {
       </button>
     </div>`;
   }).join('');
+  if (window.lucide) lucide.createIcons();
 }
 
 async function uploadFile(input) {

@@ -1,18 +1,18 @@
 'use strict';
 
 const PROD_STAGES = [
-  { id: 'gauta',      label: '📥 Gauta' },
-  { id: 'gaminama',   label: '🔨 Gaminama' },
-  { id: 'paruosta',   label: '✅ Paruošta' },
-  { id: 'issista',    label: '📦 Išsiųsta' },
-  { id: 'pristatyta', label: '🏁 Pristatyta' },
+  { id: 'gauta',      label: 'Gauta' },
+  { id: 'gaminama',   label: 'Gaminama' },
+  { id: 'paruosta',   label: 'Paruošta' },
+  { id: 'issista',    label: 'Išsiųsta' },
+  { id: 'pristatyta', label: 'Pristatyta' },
 ];
 
 const STORE_BADGE = {
-  bloom_lt:     { label: 'LT', color: '#2ea043' },
-  mossbloom_dk: { label: 'DK', color: '#1f6feb' },
-  mossbloom_de: { label: 'DE', color: '#da3633' },
-  b2b:          { label: 'B2B', color: '#7c3aed' },
+  bloom_lt:     { label: 'LT' },
+  mossbloom_dk: { label: 'DK' },
+  mossbloom_de: { label: 'DE' },
+  b2b:          { label: 'B2B' },
 };
 
 let prodDragging = null;
@@ -86,6 +86,7 @@ function renderProduction(stages) {
     });
   }
 
+  if (window.lucide) lucide.createIcons();
   updateProdMobileView();
 }
 
@@ -102,10 +103,10 @@ function renderProdCard(c) {
     else                    { dueStr = `${daysLeft}d`; }
   }
 
-  const badge  = STORE_BADGE[c.store_id] || { label: c.store_id || '?', color: '#6b7280' };
+  const badge  = STORE_BADGE[c.store_id] || { label: c.store_id || '?' };
   const imgHtml = c.product_image
     ? `<img class="prod-card-img" src="${escHtml(c.product_image)}" alt="" loading="lazy">`
-    : `<div class="prod-card-img prod-card-img-placeholder">🌿</div>`;
+    : `<div class="prod-card-img prod-card-img-placeholder"><i data-lucide="leaf"></i></div>`;
 
   const sizeHtml = c.product_size
     ? `<span class="prod-card-size">${escHtml(c.product_size)}</span>`
@@ -122,7 +123,7 @@ function renderProdCard(c) {
     ${sizeHtml}
     <div class="prod-card-meta">
       <span class="prod-card-flag">${escHtml(c.country_flag || '')}</span>
-      <span class="prod-card-store-badge" style="background:${badge.color}20;color:${badge.color};border:1px solid ${badge.color}40">${badge.label}</span>
+      <span class="prod-card-store-badge">${badge.label}</span>
       ${c.order_number ? `<span class="prod-card-order">${escHtml(c.order_number)}</span>` : ''}
     </div>
     <div class="prod-card-due-row">

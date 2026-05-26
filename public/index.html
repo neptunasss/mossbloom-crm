@@ -8,6 +8,9 @@
   <meta name="apple-mobile-web-app-title" content="Gamyba">
   <meta name="theme-color" content="#0f1117">
   <title>Mossbloom CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
   <link rel="manifest" href="/manifest.json">
 </head>
@@ -29,41 +32,27 @@
 
     <nav class="sidebar-nav">
       <a href="#" class="nav-item" data-view="accounting">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-        </svg>
+        <i data-lucide="layout-dashboard" class="nav-icon"></i>
         Dashboard
       </a>
       <a href="#" class="nav-item" data-view="orders">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-          <rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
-        </svg>
+        <i data-lucide="shopping-bag" class="nav-icon"></i>
         Orders
       </a>
       <a href="#" class="nav-item" data-view="production">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-        </svg>
+        <i data-lucide="hammer" class="nav-icon"></i>
         Gamyba
       </a>
       <a href="#" class="nav-item" data-view="deals">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-        </svg>
+        <i data-lucide="git-pull-request" class="nav-icon"></i>
         Sandoriai
       </a>
       <a href="#" class="nav-item" data-view="products">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>
-        </svg>
+        <i data-lucide="box" class="nav-icon"></i>
         Products
       </a>
       <a href="#" class="nav-item" data-view="calculator">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4"/>
-          <circle cx="16" cy="17" r="1.5" fill="currentColor" stroke="none"/>
-        </svg>
+        <i data-lucide="calculator" class="nav-icon"></i>
         Kainodara
       </a>
     </nav>
@@ -79,9 +68,7 @@
         <span id="user-name">admin</span>
       </div>
       <button id="logout-btn" class="btn-icon" title="Sign out">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">
-          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
-        </svg>
+        <i data-lucide="log-out"></i>
       </button>
     </div>
   </aside>
@@ -92,18 +79,14 @@
     <header class="page-header">
       <div class="header-left">
         <button id="sidebar-toggle" class="btn-icon sidebar-toggle" aria-label="Toggle menu">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
-            <path d="M3 12h18M3 6h18M3 18h18"/>
-          </svg>
+          <i data-lucide="menu"></i>
         </button>
         <h1 class="page-title" id="page-title">Orders</h1>
         <span id="header-count" class="count-badge">—</span>
       </div>
       <div class="header-right">
         <button id="sync-btn" class="btn-sync">
-          <svg id="sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
-            <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
-          </svg>
+          <i data-lucide="refresh-cw" id="sync-icon"></i>
           <span id="sync-label">Sync</span>
         </button>
         <button id="new-b2b-btn" class="btn-primary" hidden>+ B2B Order</button>
@@ -458,11 +441,11 @@
 
         <!-- Mobile stage tabs -->
         <div class="prod-tabs" id="prod-tabs">
-          <button class="prod-tab active" data-stage="gauta">📥 Gauta <span class="prod-tab-count" id="ptab-gauta">0</span></button>
-          <button class="prod-tab" data-stage="gaminama">🔨 Gaminama <span class="prod-tab-count" id="ptab-gaminama">0</span></button>
-          <button class="prod-tab" data-stage="paruosta">✅ Paruošta <span class="prod-tab-count" id="ptab-paruosta">0</span></button>
-          <button class="prod-tab" data-stage="issista">📦 Išsiųsta <span class="prod-tab-count" id="ptab-issista">0</span></button>
-          <button class="prod-tab" data-stage="pristatyta">🏁 Pristatyta <span class="prod-tab-count" id="ptab-pristatyta">0</span></button>
+          <button class="prod-tab active" data-stage="gauta">Gauta <span class="prod-tab-count" id="ptab-gauta">0</span></button>
+          <button class="prod-tab" data-stage="gaminama">Gaminama <span class="prod-tab-count" id="ptab-gaminama">0</span></button>
+          <button class="prod-tab" data-stage="paruosta">Paruošta <span class="prod-tab-count" id="ptab-paruosta">0</span></button>
+          <button class="prod-tab" data-stage="issista">Išsiųsta <span class="prod-tab-count" id="ptab-issista">0</span></button>
+          <button class="prod-tab" data-stage="pristatyta">Pristatyta <span class="prod-tab-count" id="ptab-pristatyta">0</span></button>
         </div>
 
         <!-- Kanban board -->
@@ -471,7 +454,7 @@
           <div class="prod-col" data-stage="gauta"
                ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
             <div class="prod-col-header">
-              <span>📥 Gauta</span>
+              <span class="prod-col-label"><i data-lucide="inbox"></i> Gauta</span>
               <span class="prod-col-count" id="pcol-gauta">0</span>
             </div>
             <div class="prod-cards" id="prod-col-gauta"></div>
@@ -480,7 +463,7 @@
           <div class="prod-col" data-stage="gaminama"
                ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
             <div class="prod-col-header">
-              <span>🔨 Gaminama</span>
+              <span class="prod-col-label"><i data-lucide="hammer"></i> Gaminama</span>
               <span class="prod-col-count" id="pcol-gaminama">0</span>
             </div>
             <div class="prod-cards" id="prod-col-gaminama"></div>
@@ -489,7 +472,7 @@
           <div class="prod-col" data-stage="paruosta"
                ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
             <div class="prod-col-header">
-              <span>✅ Paruošta</span>
+              <span class="prod-col-label"><i data-lucide="check-circle"></i> Paruošta</span>
               <span class="prod-col-count" id="pcol-paruosta">0</span>
             </div>
             <div class="prod-cards" id="prod-col-paruosta"></div>
@@ -498,7 +481,7 @@
           <div class="prod-col" data-stage="issista"
                ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
             <div class="prod-col-header">
-              <span>📦 Išsiųsta</span>
+              <span class="prod-col-label"><i data-lucide="package"></i> Išsiųsta</span>
               <span class="prod-col-count" id="pcol-issista">0</span>
             </div>
             <div class="prod-cards" id="prod-col-issista"></div>
@@ -507,7 +490,7 @@
           <div class="prod-col" data-stage="pristatyta"
                ondragover="prodDragOver(event)" ondrop="prodDrop(event)">
             <div class="prod-col-header">
-              <span>🏁 Pristatyta</span>
+              <span class="prod-col-label"><i data-lucide="flag"></i> Pristatyta</span>
               <span class="prod-col-count" id="pcol-pristatyta">0</span>
             </div>
             <div class="prod-cards" id="prod-col-pristatyta"></div>
@@ -825,8 +808,8 @@
           <div class="form-group">
             <label>Tipas</label>
             <select name="type">
-              <option value="expense">📉 Išlaidos</option>
-              <option value="income">📈 Pajamos</option>
+              <option value="expense">Išlaidos</option>
+              <option value="income">Pajamos</option>
             </select>
           </div>
           <div class="form-group">
@@ -884,6 +867,7 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/deals.js"></script>
@@ -894,6 +878,7 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+  if (window.lucide) lucide.createIcons();
 </script>
 </body>
 </html>
