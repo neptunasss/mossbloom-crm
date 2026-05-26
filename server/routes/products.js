@@ -101,8 +101,10 @@ router.get('/', requireAuth, (req, res) => {
       if (!p) continue;
 
       if (!sales[p.sku]) sales[p.sku] = { units: 0, revenue: 0 };
+      const subtotal = parseFloat(item.subtotal || 0);
       sales[p.sku].units   += item.quantity || 1;
-      sales[p.sku].revenue += parseFloat(item.subtotal || 0);
+      // DK line item subtotals are in DKK — convert to EUR
+      sales[p.sku].revenue += row.store_id === 'mossbloom_dk' ? subtotal / 7.46 : subtotal;
     }
   }
 

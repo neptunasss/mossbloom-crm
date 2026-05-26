@@ -227,12 +227,13 @@ try {
     console.log(`[db] seeded ${SEED.length} products`);
   }
 
-  // DK prices include LT VAT 21% — fix gross_profit and margin_pct (idempotent)
+  // DK: set EUR price from DKK at 7.46, then correct margin for 21% LT VAT (idempotent)
   db.prepare(`
     UPDATE products
-    SET gross_profit = ROUND((sell_price_eur / 1.21 - total_cost) * 100) / 100,
-        margin_pct   = ROUND((sell_price_eur / 1.21 - total_cost) / (sell_price_eur / 1.21) * 100 * 100) / 100
-    WHERE store = 'DK'
+    SET sell_price_eur = ROUND(sell_price_dkk / 7.46 * 100) / 100,
+        gross_profit   = ROUND((sell_price_dkk / 7.46 / 1.21 - total_cost) * 100) / 100,
+        margin_pct     = ROUND((sell_price_dkk / 7.46 / 1.21 - total_cost) / (sell_price_dkk / 7.46 / 1.21) * 100 * 100) / 100
+    WHERE store = 'DK' AND sell_price_dkk IS NOT NULL
   `).run();
 } catch (e) {
   console.error('[db] products setup error:', e.message);
