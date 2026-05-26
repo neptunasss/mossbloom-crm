@@ -586,86 +586,40 @@
       </div>
     </div>
 
-    <!-- ── Calculator View ── -->
+    <!-- ── Kainodara View ── -->
     <div class="view" id="view-calculator" hidden>
-      <div class="content-body content-body--calc">
-        <div class="calc-layout">
+      <div class="content-body">
+        <div class="kain-layout">
 
-          <!-- Input panel -->
-          <div class="calc-form-panel">
-            <div class="calc-section">
-              <label class="calc-label">Product Type</label>
+          <!-- Inputs -->
+          <div class="kain-form">
+            <div class="kain-section">
+              <label class="kain-label">Parduotuvė</label>
               <div class="toggle-group">
-                <button class="toggle-btn active" data-type="round">⬤ Round</button>
-                <button class="toggle-btn" data-type="rectangular">▬ Rectangular</button>
+                <button class="toggle-btn active kain-store-btn" data-store="LT" onclick="setKainStore('LT')">LT</button>
+                <button class="toggle-btn kain-store-btn" data-store="DK" onclick="setKainStore('DK')">DK</button>
               </div>
             </div>
-
-            <div class="calc-section" id="round-inputs">
-              <label class="calc-label">Diameter (cm)</label>
-              <input type="number" id="calc-diameter" class="calc-input" placeholder="60" min="1" max="500">
-            </div>
-
-            <div class="calc-section" id="rect-inputs" hidden>
-              <label class="calc-label">Dimensions (cm)</label>
-              <div class="dim-row">
-                <input type="number" id="calc-width"  class="calc-input" placeholder="Width"  min="1">
-                <span class="dim-sep">×</span>
-                <input type="number" id="calc-height" class="calc-input" placeholder="Height" min="1">
-              </div>
-            </div>
-
-            <div class="calc-section">
-              <label class="calc-label">Moss Type</label>
-              <select id="calc-moss" class="calc-input">
-                <option value="reindeer">Reindeer Moss</option>
-                <option value="ball">Ball Moss</option>
-                <option value="flat">Flat Sheet Moss</option>
-                <option value="cushion">Cushion Moss</option>
-                <option value="mixed">Mixed Moss</option>
+            <div class="kain-section">
+              <label class="kain-label">Produktas</label>
+              <select id="kain-product" class="kain-select" onchange="kainRecalc()">
+                <option value="">Kraunama…</option>
               </select>
             </div>
-
-            <div class="calc-section">
-              <label class="calc-label">Quantity</label>
-              <input type="number" id="calc-qty" class="calc-input" value="1" min="1" max="1000">
+            <div class="kain-section">
+              <label class="kain-label">Kiekis</label>
+              <input type="number" id="kain-qty" class="kain-input" value="1" min="1" max="999" oninput="kainRecalc()">
             </div>
-
-            <div class="calc-section">
-              <label class="calc-label">Include</label>
-              <div class="check-group">
-                <label class="check-item"><input type="checkbox" id="inc-frame"     checked> Frame / Backing</label>
-                <label class="check-item"><input type="checkbox" id="inc-labor"     checked> Labor</label>
-                <label class="check-item"><input type="checkbox" id="inc-packaging" checked> Packaging</label>
-              </div>
+            <div class="kain-section">
+              <label class="kain-label">Kaina (€, redaguojama)</label>
+              <input type="number" id="kain-custom-price" class="kain-input" placeholder="Katalogo kaina" step="0.01" oninput="kainRecalc()">
             </div>
-
-            <div class="calc-section">
-              <label class="calc-label">Markup</label>
-              <div class="dim-row">
-                <input type="number" id="calc-markup" class="calc-input" value="2.5" step="0.1" min="1.0" max="20" style="max-width:90px">
-                <span class="dim-sep" style="font-size:13px;color:var(--text-muted)">× cost price</span>
-              </div>
-            </div>
-
-            <!-- Pricing settings -->
-            <details class="pricing-details">
-              <summary>Edit Pricing Defaults</summary>
-              <div class="pricing-grid" id="pricing-grid">
-                <!-- populated by calculator.js -->
-              </div>
-              <button class="btn-primary" style="width:100%;margin-top:12px" onclick="savePricingSettings()">Save Pricing</button>
-            </details>
+            <button class="btn-primary" style="width:100%;margin-top:4px" onclick="kainAddToB2b()">Pridėti į B2B užsakymą</button>
           </div>
 
-          <!-- Results panel -->
-          <div class="calc-results-panel" id="calc-results">
-            <div class="calc-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" opacity="0.3">
-                <rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4"/>
-              </svg>
-              <p>Enter dimensions to calculate</p>
-            </div>
+          <!-- Results -->
+          <div id="kain-results" class="kain-results">
+            <div style="text-align:center;color:var(--text-muted);padding:40px 0">Pasirinkite produktą</div>
           </div>
 
         </div>
@@ -937,49 +891,46 @@
   </div>
 </div>
 
-<!-- ── Product → B2B Order Modal ── -->
-<div id="product-b2b-modal" class="modal-overlay" hidden>
-  <div class="modal">
-    <div class="modal-header">
-      <h3>Add to B2B Order</h3>
-      <button class="btn-icon" onclick="closeProductB2bModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+<!-- ── B2B Order Slide Panel ── -->
+<div id="b2b-panel-overlay" class="customer-overlay" onclick="closeB2bPanel()"></div>
+<div id="b2b-slide-panel" class="b2b-panel">
+  <div class="panel-header">
+    <div>
+      <h3 style="font-size:15px;font-weight:600">B2B užsakymas</h3>
+      <p id="pb2b-product-label" style="font-size:12px;color:var(--text-secondary);margin-top:2px"></p>
     </div>
-    <div class="modal-body">
-      <form id="product-b2b-form" onsubmit="return false">
-        <div class="form-group">
-          <label>Product</label>
-          <input type="text" id="pb2b-product-name" readonly style="background:var(--bg-hover);color:var(--text-secondary)">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Quantity</label>
-            <input type="number" id="pb2b-qty" min="1" max="99" value="1" style="width:100%">
-          </div>
-          <div class="form-group">
-            <label>Price per unit (€)</label>
-            <input type="number" id="pb2b-price" min="0" step="0.01" style="width:100%">
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Customer Name *</label>
-          <input type="text" id="pb2b-customer" placeholder="Full name">
-        </div>
-        <div class="form-group">
-          <label>Order Date *</label>
-          <input type="date" id="pb2b-date">
-        </div>
-        <div class="form-group">
-          <label>Notes</label>
-          <input type="text" id="pb2b-notes" placeholder="Optional notes…">
-        </div>
-      </form>
+    <button class="btn-icon" onclick="closeB2bPanel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="b2b-panel-body">
+    <input type="hidden" id="pb2b-product-name">
+    <div class="form-group">
+      <label>Kliento vardas *</label>
+      <input type="text" id="pb2b-customer" placeholder="Vardas Pavardė">
     </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeProductB2bModal()">Atšaukti</button>
-      <button class="btn-primary" id="pb2b-submit-btn" onclick="submitProductB2b()">Create B2B Order</button>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Kiekis</label>
+        <input type="number" id="pb2b-qty" min="1" max="999" value="1" oninput="updateB2bTotal()">
+      </div>
+      <div class="form-group">
+        <label>Kaina / vnt. (€)</label>
+        <input type="number" id="pb2b-price" min="0" step="0.01" oninput="updateB2bTotal()">
+      </div>
     </div>
+    <div class="b2b-panel-total">
+      Viso: <strong id="pb2b-total">€0.00</strong>
+    </div>
+    <div class="form-group">
+      <label>Data *</label>
+      <input type="date" id="pb2b-date">
+    </div>
+    <div class="form-group">
+      <label>Pastabos</label>
+      <input type="text" id="pb2b-notes" placeholder="Neprivaloma…">
+    </div>
+    <button class="btn-primary" id="pb2b-submit-btn" style="width:100%;margin-top:8px" onclick="submitB2bPanel()">Sukurti B2B užsakymą</button>
   </div>
 </div>
 

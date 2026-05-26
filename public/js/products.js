@@ -4,7 +4,7 @@ let productsData  = [];
 let productsStats = null;
 let productFilter = { store: 'all', type: 'all', sort: 'margin_pct' };
 let expandedProductId = null;
-let b2bModalProduct   = null;
+let b2bPanelProduct   = null;
 
 async function initProducts() {
   if (productsData.length) {
@@ -34,7 +34,6 @@ function renderProductsStats() {
   const el = document.getElementById('products-stats');
   if (!el) return;
   const s = productsStats || {};
-
   const mostSold = [...productsData].sort((a, b) => b.units_sold - a.units_sold)[0] || null;
 
   el.innerHTML = `
@@ -51,26 +50,21 @@ function renderProductsStats() {
     <div class="prod-stat-card">
       <div class="prod-stat-label">Avg Margin</div>
       <div class="prod-stat-value">${s.avg_margin != null ? p1(s.avg_margin) + '%' : '—'}</div>
-      <div class="prod-stat-name">${s.total_products || 0} products total</div>
+      <div class="prod-stat-name">${s.total_products || 0} produktų</div>
     </div>
     <div class="prod-stat-card">
-      <div class="prod-stat-label">Most Sold</div>
+      <div class="prod-stat-label">Daugiausiai parduota</div>
       <div class="prod-stat-value">${mostSold?.units_sold || '—'}</div>
-      <div class="prod-stat-name">${esc(mostSold?.name || 'No sales data yet')}</div>
+      <div class="prod-stat-name">${esc(mostSold?.name || 'Nėra duomenų')}</div>
     </div>
   `;
 }
 
 function getFilteredProducts() {
   let list = [...productsData];
-  if (productFilter.store !== 'all') {
-    list = list.filter(p => p.store === productFilter.store);
-  }
-  if (productFilter.type === 'ball') {
-    list = list.filter(p => !p.moss_type.toLowerCase().includes('mix'));
-  } else if (productFilter.type === 'mix') {
-    list = list.filter(p => p.moss_type.toLowerCase().includes('mix'));
-  }
+  if (productFilter.store !== 'all') list = list.filter(p => p.store === productFilter.store);
+  if (productFilter.type === 'ball') list = list.filter(p => !p.moss_type.toLowerCase().includes('mix'));
+  else if (productFilter.type === 'mix') list = list.filter(p => p.moss_type.toLowerCase().includes('mix'));
   const k = productFilter.sort;
   list.sort((a, b) => k === 'name' ? a.name.localeCompare(b.name) : (b[k] || 0) - (a[k] || 0));
   return list;
@@ -87,11 +81,11 @@ function renderProductsTable() {
   }
 
   tbody.innerHTML = list.flatMap(p => {
-    const mcls      = p.margin_pct >= 65 ? 'green' : p.margin_pct >= 50 ? 'amber' : 'red';
-    const mcolor    = mcls === 'green' ? 'var(--green)' : mcls === 'amber' ? 'var(--orange)' : 'var(--red)';
-    const storeCls  = p.store === 'LT' ? 'lt' : p.store === 'DK' ? 'dk' : 'de';
-    const isExp     = expandedProductId === p.id;
-    const barW      = Math.min(p.margin_pct, 100).toFixed(1);
+    const mcls     = p.margin_pct >= 65 ? 'green' : p.margin_pct >= 50 ? 'amber' : 'red';
+    const mcolor   = mcls === 'green' ? 'var(--green)' : mcls === 'amber' ? 'var(--orange)' : 'var(--red)';
+    const storeCls = p.store === 'LT' ? 'lt' : p.store === 'DK' ? 'dk' : 'de';
+    const isExp    = expandedProductId === p.id;
+    const barW     = Math.min(p.margin_pct, 100).toFixed(1);
 
     const mainRow = `
 <tr class="prod-row${isExp ? ' expanded' : ''}" data-id="${p.id}" onclick="toggleProductExpand(${p.id})">
@@ -107,26 +101,24 @@ function renderProductsTable() {
       <span class="margin-pct-label ${mcls}">${p1(p.margin_pct)}%</span>
     </div>
   </td>
-  <td class="text-right">${p.units_sold || '—'}</td>
+  <td class="text-right">${p.units_sold}</td>
   <td class="text-right">${p.revenue_total > 0 ? '€' + p2(p.revenue_total) : '—'}</td>
 </tr>`;
 
     if (!isExp) return [mainRow];
 
-    const extrasHtml = p.extras_cost > 0
-      ? `<span class="prod-cost-divider">+</span>
-         <div class="prod-cost-item">
-           <div class="prod-cost-lbl">Extras</div>
-           <div class="prod-cost-val">€${p2(p.extras_cost)}</div>
-         </div>`
-      : '';
+    const extrasHtml = p.extras_cost > 0 ? `
+      <span class="prod-cost-divider">+</span>
+      <div class="prod-cost-item">
+        <div class="prod-cost-lbl">Extras</div>
+        <div class="prod-cost-val">€${p2(p.extras_cost)}</div>
+      </div>` : '';
 
-    const dkkHtml = p.sell_price_dkk
-      ? `<div class="prod-cost-item">
-           <div class="prod-cost-lbl">DKK Price</div>
-           <div class="prod-cost-val">${Math.round(p.sell_price_dkk)} DKK</div>
-         </div>`
-      : '';
+    const dkkHtml = p.sell_price_dkk ? `
+      <div class="prod-cost-item" style="margin-left:8px">
+        <div class="prod-cost-lbl">DKK kaina</div>
+        <div class="prod-cost-val">${Math.round(p.sell_price_dkk)} DKK</div>
+      </div>` : '';
 
     const expandRow = `
 <tr class="prod-expand-row">
@@ -134,30 +126,30 @@ function renderProductsTable() {
     <div class="prod-expand-inner">
       <div class="prod-expand-costs">
         <div class="prod-cost-item">
-          <div class="prod-cost-lbl">Frame</div>
+          <div class="prod-cost-lbl">Rėmai</div>
           <div class="prod-cost-val">€${p2(p.frame_cost)}</div>
         </div>
         <span class="prod-cost-divider">+</span>
         <div class="prod-cost-item">
-          <div class="prod-cost-lbl">Moss</div>
+          <div class="prod-cost-lbl">Samanos</div>
           <div class="prod-cost-val">€${p2(p.moss_cost)}</div>
         </div>
         ${extrasHtml}
         <span class="prod-cost-divider">=</span>
         <div class="prod-cost-item">
-          <div class="prod-cost-lbl">Total Cost</div>
+          <div class="prod-cost-lbl">Savikaina</div>
           <div class="prod-cost-val" style="color:var(--red)">€${p2(p.total_cost)}</div>
         </div>
         ${dkkHtml}
       </div>
       <div class="prod-margin-visual">
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Margin</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Marža</div>
         <div class="prod-margin-bar-lg">
           <div style="height:100%;border-radius:5px;width:${barW}%;background:${mcolor};transition:width .4s"></div>
         </div>
-        <div style="font-size:13px;font-weight:600;margin-top:4px">${p1(p.margin_pct)}% margin · €${p2(p.gross_profit)} profit</div>
+        <div style="font-size:13px;font-weight:600;margin-top:4px">${p1(p.margin_pct)}% marža · €${p2(p.gross_profit)} pelnas</div>
       </div>
-      <button class="btn-add-b2b" onclick="event.stopPropagation();openProductB2bModal(${p.id})">+ B2B Order</button>
+      <button class="btn-add-b2b" onclick="event.stopPropagation();openB2bPanelForProduct(${p.id})">Pridėti į B2B užsakymą</button>
     </div>
   </td>
 </tr>`;
@@ -192,33 +184,47 @@ function setProductSort(sort) {
   renderProductsTable();
 }
 
-// ── B2B Modal ───────────────────────────────────────────────────────────────
+// ── B2B Slide Panel ─────────────────────────────────────────────────────────
 
-function openProductB2bModal(productId) {
+function openB2bPanelForProduct(productId) {
   const p = productsData.find(x => x.id === productId);
-  if (!p) return;
-  b2bModalProduct = p;
-
-  document.getElementById('pb2b-product-name').value = p.name;
-  document.getElementById('pb2b-price').value        = p.sell_price_eur;
-  document.getElementById('pb2b-qty').value          = 1;
-  document.getElementById('pb2b-customer').value     = '';
-  document.getElementById('pb2b-date').value         = new Date().toISOString().slice(0, 10);
-  document.getElementById('pb2b-notes').value        = '';
-
-  document.getElementById('product-b2b-modal').hidden = false;
+  if (p) openB2bPanel(p);
 }
 
-function closeProductB2bModal() {
-  document.getElementById('product-b2b-modal').hidden = true;
-  b2bModalProduct = null;
+function openB2bPanel(product, defaultQty = 1, defaultPrice = null) {
+  b2bPanelProduct = product;
+
+  document.getElementById('pb2b-product-name').value = product.name;
+  document.getElementById('pb2b-product-label').textContent = product.name;
+  document.getElementById('pb2b-price').value     = defaultPrice != null ? defaultPrice : product.sell_price_eur;
+  document.getElementById('pb2b-qty').value        = defaultQty;
+  document.getElementById('pb2b-customer').value   = '';
+  document.getElementById('pb2b-date').value       = new Date().toISOString().slice(0, 10);
+  document.getElementById('pb2b-notes').value      = '';
+  updateB2bTotal();
+
+  document.getElementById('b2b-panel-overlay').classList.add('visible');
+  document.getElementById('b2b-slide-panel').classList.add('open');
 }
 
-async function submitProductB2b() {
-  if (!b2bModalProduct) return;
+function closeB2bPanel() {
+  document.getElementById('b2b-panel-overlay').classList.remove('visible');
+  document.getElementById('b2b-slide-panel').classList.remove('open');
+  b2bPanelProduct = null;
+}
+
+function updateB2bTotal() {
+  const qty   = parseFloat(document.getElementById('pb2b-qty').value)   || 1;
+  const price = parseFloat(document.getElementById('pb2b-price').value) || 0;
+  const el = document.getElementById('pb2b-total');
+  if (el) el.textContent = `€${(qty * price).toFixed(2)}`;
+}
+
+async function submitB2bPanel() {
+  if (!b2bPanelProduct) return;
 
   const qty      = Math.max(1, parseFloat(document.getElementById('pb2b-qty').value) || 1);
-  const price    = parseFloat(document.getElementById('pb2b-price').value) || b2bModalProduct.sell_price_eur;
+  const price    = parseFloat(document.getElementById('pb2b-price').value) || b2bPanelProduct.sell_price_eur;
   const customer = document.getElementById('pb2b-customer').value.trim();
   const date     = document.getElementById('pb2b-date').value;
   const notes    = document.getElementById('pb2b-notes').value.trim();
@@ -227,8 +233,8 @@ async function submitProductB2b() {
   if (!date)     { toast('Pasirinkite datą', 'error'); return; }
 
   const description = qty > 1
-    ? `${qty}x ${b2bModalProduct.name}${notes ? ' · ' + notes : ''}`
-    : `${b2bModalProduct.name}${notes ? ' · ' + notes : ''}`;
+    ? `${qty}x ${b2bPanelProduct.name}${notes ? ' · ' + notes : ''}`
+    : `${b2bPanelProduct.name}${notes ? ' · ' + notes : ''}`;
 
   const btn = document.getElementById('pb2b-submit-btn');
   btn.disabled = true;
@@ -239,7 +245,7 @@ async function submitProductB2b() {
       body:   JSON.stringify({ customer_name: customer, amount: qty * price, description, order_date: date, has_invoice: false }),
     });
     toast('B2B užsakymas sukurtas!');
-    closeProductB2bModal();
+    closeB2bPanel();
   } catch {
     toast('Klaida kuriant užsakymą', 'error');
   } finally {

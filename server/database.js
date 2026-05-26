@@ -226,6 +226,14 @@ try {
     }
     console.log(`[db] seeded ${SEED.length} products`);
   }
+
+  // DK prices include LT VAT 21% — fix gross_profit and margin_pct (idempotent)
+  db.prepare(`
+    UPDATE products
+    SET gross_profit = ROUND((sell_price_eur / 1.21 - total_cost) * 100) / 100,
+        margin_pct   = ROUND((sell_price_eur / 1.21 - total_cost) / (sell_price_eur / 1.21) * 100 * 100) / 100
+    WHERE store = 'DK'
+  `).run();
 } catch (e) {
   console.error('[db] products setup error:', e.message);
 }
