@@ -437,6 +437,7 @@ function statBlock(current, previous, sparkline) {
   return {
     value: current,
     changePct: pctChange(current, previous),
+    changeAbs: current != null && previous != null ? current - previous : null,
     sparkline,
   };
 }
@@ -535,6 +536,7 @@ async function buildDashboard(db, query) {
     yearlyPace: projected * 12,
     targetMonthly,
     gapToTarget,
+    avgOrder: curAgg.avgOrderEUR,
     action: forecastAction,
   };
 
@@ -590,6 +592,49 @@ async function buildDashboard(db, query) {
   if (category) entries = entries.filter(e => e.category === category);
   if (store_id) entries = entries.filter(e => matchesStoreFilter(e, store_id));
 
+  // Pipeline deals (active — not won/lost), top 5 by amount
+  const pipelineDeals = db.prepare(`
+    SELECT id, customer_name, description, amount, currency, status
+    FROM custom_deals
+    WHERE status NOT IN ('won', 'lost')
+    ORDER BY amount DESC
+    LIMIT 5
+  `).all();
+  const pipelineTotal = pipelineDeals.reduce((s, d) => {
+    return s + (d.currency === 'EUR' ? d.amount : fx.toEur(d.amount, d.currency, rate));
+  }, 0);
+
+  // Recent WC orders (last 5)
+  const recentOrders = db.prepare(`
+    SELECT store_id, order_id, customer_name, customer_email, total, currency, date_created, status
+    FROM orders_cache
+    ORDER BY date_created DESC
+    LIMIT 5
+  `).all();
+
+  // Lead source breakdown for current period
+  let sourcesRows = [];
+  let totalTaggedInPeriod = 0;
+  try {
+    sourcesRows = db.prepare(`
+      SELECT os.source, COUNT(*) AS count
+      FROM order_sources os
+      JOIN orders_cache oc
+        ON oc.store_id = os.store_id
+        AND CAST(oc.order_id AS TEXT) = os.order_id
+      WHERE substr(oc.date_created, 1, 10) >= ? AND substr(oc.date_created, 1, 10) <= ?
+        AND oc.status NOT IN ('cancelled','refunded','failed')
+      GROUP BY os.source
+      ORDER BY count DESC
+    `).all(period.from, period.to);
+    totalTaggedInPeriod = sourcesRows.reduce((s, r) => s + r.count, 0);
+  } catch {}
+  const wcCountInPeriod = (db.prepare(`
+    SELECT COUNT(*) AS c FROM orders_cache
+    WHERE substr(date_created, 1, 10) >= ? AND substr(date_created, 1, 10) <= ?
+      AND status NOT IN ('cancelled','refunded','failed')
+  `).get(period.from, period.to) || {}).c || 0;
+
   return {
     rate,
     period,
@@ -602,6 +647,10 @@ async function buildDashboard(db, query) {
     expensesByCategory: expensesByCategory(currentAll, rate),
     entries,
     total: entries.length,
+    pipelineDeals,
+    pipelineTotal,
+    recentOrders,
+    sources: { rows: sourcesRows, totalTagged: totalTaggedInPeriod, totalOrders: wcCountInPeriod },
   };
 }
 

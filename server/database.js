@@ -131,6 +131,17 @@ try { db.exec("UPDATE accounting_entries SET category='Paslaugos' WHERE type='ex
 try { db.exec("UPDATE accounting_entries SET category='Kitos išlaidos' WHERE type='expense' AND (description LIKE '%KITOS PREKE%' OR description LIKE '%KITOS IŠLAIDOS%' OR description LIKE '%KITOS ISLAIDOS%')"); } catch {}
 // Clean up (SF: TRUE/FALSE) suffix from imported descriptions
 try { db.exec("UPDATE accounting_entries SET description = REPLACE(REPLACE(description, ' (SF: FALSE)', ''), ' (SF: TRUE)', '') WHERE description LIKE '%(SF:%'"); } catch {}
+// Order source tagging
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS order_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(store_id, order_id)
+  )`);
+} catch {}
 
 // Migrate old deal statuses → pipeline statuses
 db.exec(`

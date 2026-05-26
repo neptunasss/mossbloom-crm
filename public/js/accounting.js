@@ -20,10 +20,10 @@ const STAT_CARDS = [
   { key: 'grossProfit',  label: 'Bruto pelnas',     cls: 'profit',  fmt: 'eur', signed: true },
   { key: 'profit',       label: 'Grynasis pelnas',  cls: 'profit',  fmt: 'eur', signed: true },
   { key: 'roi',          label: 'ROI',              cls: 'neutral', fmt: 'pct', isRoi: true },
-  { key: 'pvm',          label: 'PVM mokėti',       cls: 'pvm',     fmt: 'eur', isPvm: true },
   { key: 'orderCount',   label: 'Užsakymai',        cls: 'neutral', fmt: 'int' },
   { key: 'avgOrder',     label: 'Vid. užsakymas',   cls: 'neutral', fmt: 'eur' },
   { key: 'profitMargin', label: 'Pelno marža',      cls: 'neutral', fmt: 'pct' },
+  { key: 'pvm',          label: 'PVM mokėti',       cls: 'neutral', fmt: 'eur', isPvm: true },
 ];
 
 let acctChart         = null;
@@ -86,6 +86,9 @@ async function loadAccounting(silent = false) {
     renderStoreProfitBreakdown(data.storeProfit);
     renderExpensesChart(data.expensesByCategory);
     renderForecastPanel(data.forecast, data.stats?.pvm);
+    renderPipelinePanel(data.pipelineDeals, data.pipelineTotal);
+    renderRecentOrdersPanel(data.recentOrders);
+    renderShaltiniaiPanel(data.sources);
     renderEntries(acctEntries);
 
     const storesPeriodEl = document.getElementById('acct-stores-period');
@@ -122,17 +125,22 @@ function fmtStatValue(val, fmt) {
   return String(val);
 }
 
-function renderChange(pct, cls) {
+function renderChange(pct, abs, fmt, cls) {
   if (pct == null) {
     return `<span class="acct-stat-change neutral">— vs ${prevPeriodLabel()}</span>`;
   }
-  const up   = pct >= 0;
-  const sign = up ? '+' : '';
+  const up      = pct >= 0;
+  const sign    = up ? '+' : '';
   const colorCls = cls === 'expense'
     ? (up ? 'down' : 'up')
     : (up ? 'up' : 'down');
   const arrow = up ? '↑' : '↓';
-  return `<span class="acct-stat-change ${colorCls}">${arrow} ${sign}${Math.abs(pct).toFixed(1)}% vs ${prevPeriodLabel()}</span>`;
+  let absPart = '';
+  if (abs != null && fmt === 'eur') {
+    const absSign = abs >= 0 ? '+' : '−';
+    absPart = ` (${absSign}€${Math.abs(Math.round(abs)).toLocaleString('lt-LT')})`;
+  }
+  return `<span class="acct-stat-change ${colorCls}">${arrow} ${sign}${Math.abs(pct).toFixed(1)}%${absPart} vs ${prevPeriodLabel()}</span>`;
 }
 
 function renderStoreChange(pct) {
@@ -167,14 +175,14 @@ function renderStats(stats) {
   grid.innerHTML = STAT_CARDS.map(card => {
     if (card.isPvm) {
       const pvm = stats.pvm || { surinktinas: 0, sumoketas: 0, moketi: 0, dueLabel: '' };
-      return `<div class="acct-stat-card acct-stat-pvm" title="PVM 21% nuo šio mėnesio pajamų">
+      return `<div class="acct-stat-card acct-stat-neutral" data-key="pvm" title="PVM 21% nuo šio mėnesio pajamų">
         <span class="acct-stat-label">PVM mokėti</span>
         <div class="acct-stat-value">${fmtEURCompact(pvm.moketi)}</div>
         <div class="acct-pvm-detail">${esc(pvm.dueLabel || '')}</div>
         <div class="acct-pvm-detail">Surinktinas: ${fmtEUR(pvm.surinktinas)}</div>
       </div>`;
     }
-    const s = stats[card.key] || { value: 0, changePct: 0 };
+    const s = stats[card.key] || { value: 0, changePct: 0, changeAbs: null };
     let col = card.cls;
     if (card.key === 'grossProfit' || card.key === 'profit') col = (s.value >= 0 ? 'income' : 'expense');
     if (card.isRoi) {
@@ -182,10 +190,10 @@ function renderStats(stats) {
       col = v == null ? 'neutral' : v > 15 ? 'income' : v > 0 ? 'roi-ok' : 'expense';
     }
     const val = s.value == null ? '—' : fmtStatValue(s.value, card.fmt);
-    return `<div class="acct-stat-card acct-stat-${col}">
+    return `<div class="acct-stat-card acct-stat-${col}" data-key="${card.key}">
       <span class="acct-stat-label">${card.label}</span>
       <div class="acct-stat-value">${val}</div>
-      ${renderChange(s.changePct, card.key === 'expenses' ? 'expense' : col)}
+      ${renderChange(s.changePct, s.changeAbs, card.fmt, card.key === 'expenses' ? 'expense' : col)}
     </div>`;
   }).join('');
 }
@@ -370,7 +378,7 @@ function renderStoreProfitBreakdown(rows) {
   tbody.innerHTML = rows.map(row => {
     const isTotal  = row.id === 'total';
     const profitCls = row.profitEUR >= 0 ? 'acct-val-income' : 'acct-val-loss';
-    const marginCls = row.marginPct >= 15 ? 'acct-val-income' : row.marginPct >= 0 ? 'acct-val-neutral' : 'acct-val-loss';
+    const marginCls = row.marginPct >= 30 ? 'acct-val-income' : row.marginPct >= 15 ? 'acct-val-neutral' : 'acct-val-loss';
     return `<tr class="${isTotal ? 'acct-row-total' : ''}">
       <td>${esc(row.name)}</td>
       <td class="num">${row.orders}</td>
@@ -388,11 +396,18 @@ function renderForecastPanel(forecast, pvm) {
   const el = document.getElementById('acct-forecast-panel');
   if (!el || !forecast) return;
 
-  const { revenueNow, daysPassed, daysInMonth, daysPct, projected, yearlyPace, targetMonthly, gapToTarget, action } = forecast;
+  const { revenueNow, daysPassed, daysInMonth, daysPct, projected, yearlyPace, targetMonthly, gapToTarget, avgOrder, action } = forecast;
   const gapFmt = gapToTarget >= 0
     ? `<span class="ch-up">+${fmtEUR(gapToTarget)}</span>`
     : `<span class="ch-down">−${fmtEUR(Math.abs(gapToTarget))}</span>`;
   const actionCls = gapToTarget >= 0 ? 'on-track' : gapToTarget >= -1000 ? 'slightly-behind' : 'far-behind';
+
+  let reikaLine = '';
+  if (gapToTarget < 0 && avgOrder > 0) {
+    const needed = Math.ceil(Math.abs(gapToTarget) / avgOrder);
+    reikaLine = `<div class="forecast-item forecast-needs"><span>Reikia</span><span class="forecast-val">~${needed} ${needed === 1 ? 'vidutinio užs.' : 'vidutinių užs.'}</span></div>`;
+  }
+
   const pvmLine = pvm?.dueLabel
     ? `<div class="forecast-item"><span>${esc(pvm.dueLabel)}</span><span class="forecast-val">${fmtEUR(pvm.moketi)}</span></div>`
     : '';
@@ -404,6 +419,7 @@ function renderForecastPanel(forecast, pvm) {
     <div class="forecast-item"><span>Metinis tempas</span><span class="forecast-val">${fmtEUR(yearlyPace)}/m.</span></div>
     <div class="forecast-item"><span>Tikslas (€100k/m.)</span><span class="forecast-val">${fmtEUR(targetMonthly)}/mėn</span></div>
     <div class="forecast-item"><span>Skirtumas</span><span class="forecast-val">${gapFmt}</span></div>
+    ${reikaLine}
     ${pvmLine}
     <div class="forecast-action ${actionCls}">${esc(action)}</div>`;
 }
@@ -579,6 +595,86 @@ async function deleteAcctEntry(id) {
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   }
+}
+
+// ── Pipeline prognozė panel ───────────────────────────────────────────────────
+
+function renderPipelinePanel(deals, total) {
+  const el = document.getElementById('acct-pipeline-panel');
+  if (!el) return;
+
+  if (!deals?.length) {
+    el.innerHTML = '<div class="acct-empty-mini">Nėra aktyvių sandorių</div>';
+    return;
+  }
+
+  const STAGE_CLS = { lead: 'pipeline-stage-lead', quoted: 'pipeline-stage-quoted', negotiating: 'pipeline-stage-neg' };
+  const rows = deals.map(d => {
+    const amt = d.currency === 'EUR' ? `€${parseFloat(d.amount || 0).toFixed(0)}` : `${parseFloat(d.amount || 0).toFixed(0)} ${d.currency}`;
+    return `<div class="pipeline-deal-row">
+      <div class="pipeline-deal-name">${esc(d.customer_name)}</div>
+      <div class="pipeline-deal-desc">${esc(d.description || '')}</div>
+      <div class="pipeline-deal-meta">
+        <span class="pipeline-stage-badge ${STAGE_CLS[d.status] || 'pipeline-stage-lead'}">${esc(d.status)}</span>
+        <span class="pipeline-deal-val">${amt}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totalFmt = total ? `€${Math.round(total).toLocaleString('lt-LT')}` : '—';
+  el.innerHTML = `${rows}<div class="pipeline-total-row"><span>Pipeline iš viso</span><span>${totalFmt}</span></div>`;
+}
+
+// ── Paskutiniai užsakymai panel ───────────────────────────────────────────────
+
+function renderRecentOrdersPanel(orders) {
+  const el = document.getElementById('acct-recent-orders');
+  if (!el) return;
+
+  if (!orders?.length) {
+    el.innerHTML = '<div class="acct-empty-mini">Nėra užsakymų</div>';
+    return;
+  }
+
+  const STORE_LABEL = { bloom_lt: 'LT', mossbloom_dk: 'DK', mossbloom_de: 'DE', b2b: 'B2B' };
+  const STORE_COLOR = { bloom_lt: '#2ea043', mossbloom_dk: '#1f6feb', mossbloom_de: '#da3633', b2b: '#7c3aed' };
+
+  el.innerHTML = orders.map(o => {
+    const label = STORE_LABEL[o.store_id] || '?';
+    const color = STORE_COLOR[o.store_id] || '#888';
+    const n = parseFloat(o.total || 0);
+    const amt = o.currency === 'EUR' ? `€${n.toFixed(2)}` : `${n.toFixed(2)} ${o.currency}`;
+    const email = esc(o.customer_email || o.customer_name || '—');
+    return `<div class="recent-order-row" onclick="switchView('orders')" title="Peržiūrėti užsakymus">
+      <span class="acct-store-pill" style="background:${color}1a;color:${color};flex-shrink:0">${label}</span>
+      <span class="recent-order-num">#${o.order_id}</span>
+      <span class="recent-order-email">${email}</span>
+      <span class="recent-order-amt">${amt}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Šaltiniai panel ───────────────────────────────────────────────────────────
+
+function renderShaltiniaiPanel(sources) {
+  const el = document.getElementById('acct-saltiniai-panel');
+  const sub = document.getElementById('acct-saltiniai-sub');
+  if (!el || !sources) return;
+
+  const { rows, totalTagged, totalOrders } = sources;
+  if (sub) sub.textContent = `${totalTagged} / ${totalOrders} pažymėta`;
+
+  if (!rows?.length) {
+    el.innerHTML = '<div class="acct-empty-mini">Nė vieno užsakymo nepažymėta</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(r => `
+    <div class="saltiniai-row">
+      <span class="saltiniai-source">${esc(r.source)}</span>
+      <span class="saltiniai-count">${r.count} užs.</span>
+    </div>
+  `).join('');
 }
 
 // ── Transactions toggle ───────────────────────────────────────────────────────

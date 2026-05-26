@@ -9,6 +9,13 @@ const telegram = require('../services/telegram');
 router.get('/', requireAuth, (req, res) => {
   const { store, status, search, limit = 300, offset = 0 } = req.query;
 
+  // Load source tags into a lookup map
+  const sourceMap = {};
+  try {
+    const allSources = db.prepare('SELECT store_id, order_id, source FROM order_sources').all();
+    for (const s of allSources) sourceMap[`${s.store_id}:${s.order_id}`] = s.source;
+  } catch {}
+
   // WC orders
   let wcOrders = [];
   if (!store || store === 'all' || store !== 'b2b') {
@@ -34,7 +41,10 @@ router.get('/', requireAuth, (req, res) => {
     }
 
     query += ' ORDER BY date_created DESC';
-    wcOrders = db.prepare(query).all(...params);
+    wcOrders = db.prepare(query).all(...params).map(o => ({
+      ...o,
+      source: sourceMap[`${o.store_id}:${String(o.order_id)}`] || null,
+    }));
   }
 
   // B2B orders — from b2b_orders table + accounting_entries that have no b2b_orders record
@@ -67,6 +77,7 @@ router.get('/', requireAuth, (req, res) => {
       is_b2b:         true,
       description:    o.description,
       has_invoice:    o.has_invoice,
+      source:         sourceMap[`b2b:${String(o.id)}`] || null,
     }));
 
     // B2B income from accounting_entries without a b2b_orders link (e.g. b2b_import)
@@ -95,6 +106,7 @@ router.get('/', requireAuth, (req, res) => {
       is_b2b:         true,
       description:    e.description,
       has_invoice:    e.notes?.includes('SF') ? 1 : 0,
+      source:         sourceMap[`b2b:ae-${e.id}`] || null,
     })));
   }
 
@@ -265,6 +277,38 @@ router.get('/sync-status', requireAuth, (req, res) => {
   });
 
   res.json(statuses);
+});
+
+// Get order source tag
+router.get('/:storeId/:orderId/source', requireAuth, (req, res) => {
+  const { storeId, orderId } = req.params;
+  try {
+    const row = db.prepare('SELECT source FROM order_sources WHERE store_id = ? AND order_id = ?').get(storeId, orderId);
+    res.json({ source: row?.source || null });
+  } catch {
+    res.json({ source: null });
+  }
+});
+
+// Set/update order source tag
+router.put('/:storeId/:orderId/source', requireAuth, (req, res) => {
+  const { storeId, orderId } = req.params;
+  const { source } = req.body;
+  const ALLOWED = ['Meta', 'Google', 'Organic', 'Referral', 'Repeat', 'B2B outbound', 'Other'];
+  if (source && !ALLOWED.includes(source)) return res.status(400).json({ error: 'Invalid source' });
+  try {
+    if (!source) {
+      db.prepare('DELETE FROM order_sources WHERE store_id = ? AND order_id = ?').run(storeId, orderId);
+    } else {
+      db.prepare(`
+        INSERT INTO order_sources (store_id, order_id, source) VALUES (?, ?, ?)
+        ON CONFLICT(store_id, order_id) DO UPDATE SET source = excluded.source
+      `).run(storeId, orderId, source);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = { router, runSync };

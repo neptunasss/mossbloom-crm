@@ -61,7 +61,7 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Quote Calculator' };
+  const titles = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.body.classList.toggle('acct-mode', view === 'accounting');
 
@@ -113,6 +113,8 @@ function renderOrders(orders) {
   }
   empty.hidden = true;
 
+  const SOURCE_OPTS = ['', 'Meta', 'Google', 'Organic', 'Referral', 'Repeat', 'B2B outbound', 'Other'];
+
   tbody.innerHTML = orders.map(o => {
     const isB2b  = !!o.is_b2b;
     const store  = STORES[o.store_id] || { color: '#888', label: '?', name: o.store_id };
@@ -137,6 +139,14 @@ function renderOrders(orders) {
       ? `<span class="b2b-order-badge">B2B</span>`
       : `#${o.order_id}`;
 
+    const storeIdEsc = esc(o.store_id);
+    const orderIdEsc = esc(String(o.order_id));
+    const curSrc = o.source || '';
+    const sourceSelect = `<select class="source-select" title="Šaltinis"
+      onchange="setOrderSource('${storeIdEsc}','${orderIdEsc}',this.value)">
+      ${SOURCE_OPTS.map(s => `<option value="${s}"${s === curSrc ? ' selected' : ''}>${s || '—'}</option>`).join('')}
+    </select>`;
+
     return `<tr class="${isB2b ? 'b2b-row' : ''}">
       <td style="border-left:3px solid ${store.color};padding-left:11px">
         <span class="store-badge" style="background:${store.color}1a;color:${store.color};border:1px solid ${store.color}40">
@@ -149,6 +159,7 @@ function renderOrders(orders) {
       <td class="col-date">${date}</td>
       <td><span class="status-badge" style="background:${status.bg};color:${status.text}">${esc(o.status)}</span></td>
       <td>${prodBadge}</td>
+      <td class="col-source">${sourceSelect}</td>
       <td class="col-total text-right">${total}</td>
       <td class="col-actions">
         <button class="btn-file" onclick="openFileModal('${esc(o.store_id)}',${o.order_id},null)" title="Files">
@@ -463,6 +474,20 @@ function timeAgo(str) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Lead source tagging ───────────────────────────────────────────────────────
+
+async function setOrderSource(storeId, orderId, source) {
+  try {
+    await api(`/api/orders/${encodeURIComponent(storeId)}/${encodeURIComponent(orderId)}/source`, {
+      method: 'PUT',
+      body: JSON.stringify({ source }),
+    });
+    if (source) toast(`Šaltinis: ${source}`);
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
 }
 
 // ── Production status ─────────────────────────────────────────────────────────
