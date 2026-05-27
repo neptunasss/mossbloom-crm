@@ -2055,6 +2055,34 @@ svg.lucide { display: block; }
 
 .btn-file:hover { background: var(--bg); color: var(--blue); }
 
+.btn-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 5px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: color 0.12s, background 0.12s;
+  display: inline-flex;
+  align-items: center;
+}
+.btn-delete:hover { background: #fee2e2; color: #dc2626; }
+
+.btn-sf {
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  line-height: 1.6;
+}
+.btn-sf:hover { background: #ede9fe; color: #7c3aed; border-color: #c4b5fd; }
+
 /* ══════════════════════════════════════════════════════════════════
    Production / Gamyba Kanban Board
 ══════════════════════════════════════════════════════════════════ */

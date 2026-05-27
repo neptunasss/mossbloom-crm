@@ -24,7 +24,7 @@ router.get('/', requireAuth, (req, res) => {
     let query = `
       SELECT store_id, order_id, customer_name, customer_email,
              status, total, currency, date_created, producer_status
-      FROM orders_cache WHERE 1=1
+      FROM orders_cache WHERE (hidden IS NULL OR hidden = 0)
     `;
     const params = [];
 
@@ -146,6 +146,17 @@ router.post('/b2b', requireAuth, (req, res) => {
     INSERT INTO b2b_orders (customer_name, amount, currency, description, has_invoice, order_date, accounting_id)
     VALUES (?, ?, 'EUR', ?, ?, ?, ?)
   `).run(customer_name, amt, description || '', has_invoice ? 1 : 0, order_date, acctResult.lastInsertRowid);
+
+  // Auto-add to production queue
+  try {
+    const pqDue = new Date(order_date);
+    pqDue.setDate(pqDue.getDate() + 14);
+    db.prepare(`
+      INSERT OR IGNORE INTO production_queue
+        (order_id, store_id, order_number, product_name, country, country_flag, due_date, stage)
+      VALUES (?, 'b2b', ?, ?, '', 'B2B', ?, 'gauta')
+    `).run(String(orderResult.lastInsertRowid), `B2B-${orderResult.lastInsertRowid}`, desc, pqDue.toISOString().slice(0, 10));
+  } catch {}
 
   res.status(201).json({
     id: orderResult.lastInsertRowid,
@@ -331,6 +342,32 @@ router.put('/:storeId/:orderId/source', requireAuth, (req, res) => {
         INSERT INTO order_sources (store_id, order_id, source) VALUES (?, ?, ?)
         ON CONFLICT(store_id, order_id) DO UPDATE SET source = excluded.source
       `).run(storeId, orderId, source);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete order — WC: soft-delete (hidden=1); B2B: hard-delete
+router.delete('/:storeId/:orderId', requireAuth, (req, res) => {
+  const { storeId, orderId } = req.params;
+  try {
+    if (storeId === 'b2b') {
+      if (String(orderId).startsWith('ae-')) {
+        const aeId = parseInt(orderId.slice(3));
+        db.prepare('DELETE FROM accounting_entries WHERE id = ?').run(aeId);
+      } else {
+        const b2b = db.prepare('SELECT accounting_id FROM b2b_orders WHERE id = ?').get(parseInt(orderId));
+        if (b2b?.accounting_id) {
+          db.prepare('DELETE FROM accounting_entries WHERE id = ?').run(b2b.accounting_id);
+        }
+        db.prepare('DELETE FROM b2b_orders WHERE id = ?').run(parseInt(orderId));
+        db.prepare("DELETE FROM production_queue WHERE store_id = 'b2b' AND order_id = ?").run(String(orderId));
+      }
+    } else {
+      db.prepare('UPDATE orders_cache SET hidden = 1 WHERE store_id = ? AND order_id = ?')
+        .run(storeId, parseInt(orderId));
     }
     res.json({ ok: true });
   } catch (err) {

@@ -239,6 +239,40 @@ try {
   console.error('[db] products setup error:', e.message);
 }
 
+// Soft-delete flag for WC orders (B2B are hard-deleted)
+try { db.exec('ALTER TABLE orders_cache ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {}
+
+// Invoices
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number TEXT UNIQUE,
+    order_id TEXT,
+    store_id TEXT,
+    customer_name TEXT,
+    customer_company TEXT,
+    customer_vat TEXT,
+    customer_address TEXT,
+    amount REAL,
+    vat_amount REAL,
+    issue_date TEXT,
+    due_date TEXT,
+    items_json TEXT DEFAULT '[]',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+// Settings (seller details for invoices)
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
+  const si = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  si.run('seller_name', 'UAB Mossbloom');
+  si.run('seller_address', '');
+  si.run('seller_vat', '');
+  si.run('seller_bank', '');
+  si.run('seller_iban', '');
+} catch {}
+
 // Order source tagging
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS order_sources (

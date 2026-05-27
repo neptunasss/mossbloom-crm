@@ -171,6 +171,10 @@ function renderOrders(orders) {
         <button class="btn-file" onclick="openFileModal('${esc(o.store_id)}',${o.order_id},null)" title="Files">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
         </button>
+        <button class="btn-sf" onclick="openSfModal('${storeIdEsc}','${orderIdEsc}','${esc(o.customer_name||'')}',${parseFloat(o.total)||0},'${esc(o.currency||'EUR')}')" title="Sąskaita faktūra">SF</button>
+        <button class="btn-delete" onclick="deleteOrder('${storeIdEsc}','${orderIdEsc}')" title="Ištrinti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -205,6 +209,72 @@ async function saveB2bOrder() {
     toast('B2B užsakymas išsaugotas');
     closeB2bModal();
     await loadOrders();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
+}
+
+// ── Delete order ─────────────────────────────────────────────────────────────
+
+async function deleteOrder(storeId, orderId) {
+  if (!confirm('Ar tikrai ištrinti šį užsakymą?')) return;
+  try {
+    await api(`/api/orders/${encodeURIComponent(storeId)}/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+    toast('Užsakymas ištrintas');
+    await loadOrders();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
+}
+
+// ── Invoice (SF) Modal ────────────────────────────────────────────────────────
+
+let _sfCtx = null;
+
+function openSfModal(storeId, orderId, customerName, amount, currency) {
+  _sfCtx = { storeId, orderId };
+  document.getElementById('sf-customer').value = customerName || '';
+  document.getElementById('sf-company').value  = '';
+  document.getElementById('sf-vat').value      = '';
+  document.getElementById('sf-address').value  = '';
+  const net       = currency === 'DKK' ? Math.round(amount / 7.46 * 100) / 100 : parseFloat(amount) || 0;
+  const unitPrice = Math.round(net / 1.21 * 100) / 100;
+  document.getElementById('sf-item-name').value  = storeId === 'b2b' ? 'B2B užsakymas' : `WooCommerce #${orderId}`;
+  document.getElementById('sf-item-price').value = unitPrice.toFixed(2);
+  document.getElementById('sf-item-qty').value   = '1';
+  document.getElementById('sf-date').value       = new Date().toISOString().slice(0, 10);
+  const due = new Date(); due.setDate(due.getDate() + 14);
+  document.getElementById('sf-due').value        = due.toISOString().slice(0, 10);
+  document.getElementById('sf-modal').hidden = false;
+}
+
+function closeSfModal() {
+  document.getElementById('sf-modal').hidden = true;
+  _sfCtx = null;
+}
+
+async function generateSf() {
+  if (!_sfCtx) return;
+  const data = {
+    order_id:          String(_sfCtx.orderId),
+    store_id:          _sfCtx.storeId,
+    customer_name:     document.getElementById('sf-customer').value.trim(),
+    customer_company:  document.getElementById('sf-company').value.trim(),
+    customer_vat:      document.getElementById('sf-vat').value.trim(),
+    customer_address:  document.getElementById('sf-address').value.trim(),
+    issue_date:        document.getElementById('sf-date').value,
+    due_date:          document.getElementById('sf-due').value,
+    items: [{
+      name:  document.getElementById('sf-item-name').value.trim() || 'Prekės / paslaugos',
+      qty:   parseFloat(document.getElementById('sf-item-qty').value) || 1,
+      price: parseFloat(document.getElementById('sf-item-price').value) || 0,
+    }],
+  };
+  if (!data.customer_name) { toast('Įveskite kliento vardą', 'error'); return; }
+  try {
+    const { id } = await api('/api/invoices', { method: 'POST', body: JSON.stringify(data) });
+    closeSfModal();
+    window.open(`/api/invoices/${id}/print`, '_blank');
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   }

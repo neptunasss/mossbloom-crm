@@ -505,7 +505,9 @@ async function buildDashboard(db, query) {
   // Forecast (always based on current calendar month)
   const daysInMonth  = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0).getDate();
   const daysPassed   = nowDate.getDate();
-  const projected    = daysPassed > 0 ? (curAgg.incomeEUR / daysPassed) * daysInMonth : curAgg.incomeEUR;
+  const currentMonthRevenue = pvmIncomeEUR;
+  const projected    = daysPassed > 0 ? (currentMonthRevenue / daysPassed) * daysInMonth : currentMonthRevenue;
+  console.log('[forecast]', { currentMonthRevenue, daysPassed, daysInMonth, projected, yearlyPace: projected * 12 });
   const targetMonthly = 100000 / 12;
   const gapToTarget  = projected - targetMonthly;
   const shortfall    = -gapToTarget;
@@ -528,7 +530,7 @@ async function buildDashboard(db, query) {
   };
 
   const forecast = {
-    revenueNow: curAgg.incomeEUR,
+    revenueNow: pvmIncomeEUR,
     daysPassed,
     daysInMonth,
     daysPct: Math.round((daysPassed / daysInMonth) * 100),
