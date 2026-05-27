@@ -61,8 +61,8 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba' };
-  const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '' };
+  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai' };
+  const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '', invoices: '', clients: '' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.getElementById('page-subtitle').textContent = subtitles[view] || '';
   document.body.classList.toggle('acct-mode', view === 'accounting');
@@ -70,7 +70,7 @@ function switchView(view) {
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
-  document.getElementById('header-count').hidden = view === 'calculator' || view === 'production';
+  document.getElementById('header-count').hidden = ['calculator','production','invoices','clients'].includes(view);
 
   updateToolbarDate();
 
@@ -80,6 +80,8 @@ function switchView(view) {
   if (view === 'calculator') initCalculator();
   if (view === 'production') initProduction();
   if (view === 'products')   initProducts();
+  if (view === 'invoices')   initInvoices();
+  if (view === 'clients')    initClients();
 
   // Close sidebar on mobile after nav click
   document.querySelector('.sidebar').classList.remove('open');
@@ -479,6 +481,8 @@ function setupListeners() {
   // Customer panel close
   document.getElementById('close-panel-btn').addEventListener('click', closeCustomerPanel);
   document.getElementById('customer-overlay').addEventListener('click', closeCustomerPanel);
+  // Client panel close
+  document.getElementById('client-overlay').addEventListener('click', closeClientPanel);
 
   // Store tabs
   document.querySelectorAll('[data-store]').forEach(btn => {

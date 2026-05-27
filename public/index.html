@@ -42,6 +42,10 @@
         <i data-lucide="shopping-bag" class="nav-icon"></i>
         Orders
       </a>
+      <a href="#" class="nav-item" data-view="clients">
+        <i data-lucide="users" class="nav-icon"></i>
+        Klientai
+      </a>
       <a href="#" class="nav-item" data-view="production">
         <i data-lucide="hammer" class="nav-icon"></i>
         Gamyba
@@ -58,6 +62,10 @@
       </a>
 
       <div class="nav-section-label">Tools</div>
+      <a href="#" class="nav-item" data-view="invoices">
+        <i data-lucide="receipt" class="nav-icon"></i>
+        Sąskaitos
+      </a>
       <a href="#" class="nav-item" data-view="calculator">
         <i data-lucide="calculator" class="nav-icon"></i>
         Kainodara
@@ -627,7 +635,233 @@
       </div>
     </div>
 
+    <!-- ── Invoices view ── -->
+    <div class="view" id="view-invoices" hidden>
+      <div class="view-toolbar">
+        <div class="toolbar-left">
+          <div class="toggle-group">
+            <button class="toggle-btn active inv-filter-status" data-status="all" onclick="setInvoiceStatus('all')">Visos</button>
+            <button class="toggle-btn inv-filter-status" data-status="draft" onclick="setInvoiceStatus('draft')">Juodraštis</button>
+            <button class="toggle-btn inv-filter-status" data-status="sent" onclick="setInvoiceStatus('sent')">Išsiųsta</button>
+            <button class="toggle-btn inv-filter-status" data-status="paid" onclick="setInvoiceStatus('paid')">Apmokėta</button>
+          </div>
+          <input type="text" id="inv-search" class="search-input" placeholder="Ieškoti sąskaitos…" oninput="searchInvoices(this.value)" style="width:200px">
+        </div>
+        <div class="toolbar-right">
+          <button class="btn-primary" onclick="openCreateInvoice()">+ Nauja sąskaita</button>
+        </div>
+      </div>
+      <div class="content-body">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nr.</th>
+                <th>Data</th>
+                <th>Mokėti iki</th>
+                <th>Pirkėjas</th>
+                <th class="text-right">Suma</th>
+                <th>Statusas</th>
+                <th class="text-right">Veiksmai</th>
+              </tr>
+            </thead>
+            <tbody id="invoices-tbody"></tbody>
+          </table>
+        </div>
+        <div id="invoices-empty" class="empty-state" hidden>
+          <p>Sąskaitų nėra. Sukurkite pirmą!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Clients view ── -->
+    <div class="view" id="view-clients" hidden>
+      <div class="view-toolbar">
+        <div class="toolbar-left">
+          <div class="toggle-group">
+            <button class="toggle-btn active cli-filter-type" data-type="all" onclick="setClientType('all')">Visi</button>
+            <button class="toggle-btn cli-filter-type" data-type="b2b" onclick="setClientType('b2b')">B2B</button>
+            <button class="toggle-btn cli-filter-type" data-type="b2c" onclick="setClientType('b2c')">B2C</button>
+          </div>
+          <input type="text" id="cli-search" class="search-input" placeholder="Vardas, el. paštas…" oninput="searchClients(this.value)" style="width:220px">
+        </div>
+        <div class="toolbar-right">
+          <button class="btn-primary" onclick="openCreateClient()">+ Naujas klientas</button>
+        </div>
+      </div>
+      <div class="content-body">
+        <div id="clients-stats-row" class="kpi-row" style="margin-bottom:16px"></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Tipas</th>
+                <th>Vardas / Įmonė</th>
+                <th>El. paštas</th>
+                <th>Šalis</th>
+                <th class="text-right">Užsakymai</th>
+                <th class="text-right">Išleista</th>
+                <th>Pask. užsakymas</th>
+                <th class="text-right">Veiksmai</th>
+              </tr>
+            </thead>
+            <tbody id="clients-tbody"></tbody>
+          </table>
+        </div>
+        <div id="clients-empty" class="empty-state" hidden><p>Klientų nerasta</p></div>
+      </div>
+    </div>
+
   </main>
+</div>
+
+<!-- ── Client slide panel ── -->
+<div id="client-overlay" class="customer-overlay"></div>
+<div id="client-panel" class="customer-panel">
+  <div class="panel-header">
+    <div class="panel-customer-id">
+      <div class="panel-avatar" id="cp-avatar">?</div>
+      <div>
+        <h2 id="cp-name">Klientas</h2>
+        <p id="cp-email" class="text-muted" style="font-size:12px"></p>
+      </div>
+    </div>
+    <button class="btn-icon" onclick="closeClientPanel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="cp-body" class="panel-body"></div>
+</div>
+
+<!-- ── Create Invoice Modal ── -->
+<div id="inv-modal" class="modal-overlay" hidden>
+  <div class="modal" style="max-width:780px;width:95vw">
+    <div class="modal-header">
+      <h3>Nauja sąskaita faktūra</h3>
+      <button class="btn-icon" onclick="closeCreateInvoice()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto">
+      <!-- Seller -->
+      <div class="inv-section-label">Pardavėjas</div>
+      <div class="form-row">
+        <div class="form-group"><label>Įmonės pavadinimas</label><input id="inv-s-name" type="text" value="MB Sydzei"></div>
+        <div class="form-group"><label>Įmonės kodas</label><input id="inv-s-code" type="text" value="306918032"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>PVM kodas</label><input id="inv-s-vat" type="text" value="LT100017928619"></div>
+        <div class="form-group"><label>Bankas</label><input id="inv-s-bank" type="text" value="Revolut"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>IBAN</label><input id="inv-s-iban" type="text" value="LT353250018909471506"></div>
+        <div class="form-group"><label>Tel.</label><input id="inv-s-phone" type="text" value="+3706 31 333 13"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>Adresas</label><input id="inv-s-addr" type="text" value="Draugystės 1-takas 8, Raseiniai"></div>
+        <div class="form-group"><label>El. paštas</label><input id="inv-s-email" type="text" value="info@bloom.lt"></div>
+      </div>
+      <div class="form-group"><label>Sąskaitą išrašė</label><input id="inv-s-signee" type="text" value="Simonas Jovaišas"></div>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+
+      <!-- Buyer -->
+      <div class="inv-section-label">Pirkėjas</div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group" style="flex:2">
+          <label>Ieškoti kliento</label>
+          <input id="inv-client-search" type="text" placeholder="Vardas arba el. paštas…" oninput="searchInvoiceClient(this.value)" autocomplete="off">
+          <div id="inv-client-suggestions" class="client-suggestions"></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>Pavadinimas *</label><input id="inv-b-name" type="text" required></div>
+        <div class="form-group"><label>Įmonės kodas</label><input id="inv-b-code" type="text"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>PVM kodas</label><input id="inv-b-vat" type="text"></div>
+        <div class="form-group" style="flex:2"><label>Adresas</label><input id="inv-b-addr" type="text"></div>
+      </div>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+
+      <!-- Line items -->
+      <div class="inv-section-label">Eilutės</div>
+      <table class="inv-items-edit-table">
+        <thead>
+          <tr>
+            <th>Pavadinimas</th>
+            <th style="width:70px">Mat. vnt.</th>
+            <th style="width:60px">Kiekis</th>
+            <th style="width:110px">Kaina be PVM</th>
+            <th style="width:100px">Suma</th>
+            <th style="width:32px"></th>
+          </tr>
+        </thead>
+        <tbody id="inv-lines-tbody"></tbody>
+      </table>
+      <button class="btn-secondary" style="margin-top:8px;font-size:12px" onclick="addInvoiceLine()">+ Pridėti eilutę</button>
+
+      <div class="inv-totals-preview">
+        <span>Be PVM: <strong id="inv-preview-sub">€0.00</strong></span>
+        <span>PVM 21%: <strong id="inv-preview-vat">€0.00</strong></span>
+        <span>Viso: <strong id="inv-preview-total">€0.00</strong></span>
+      </div>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+
+      <!-- Dates -->
+      <div class="form-row">
+        <div class="form-group"><label>Išrašymo data</label><input id="inv-issue-date" type="date"></div>
+        <div class="form-group"><label>Mokėti iki</label><input id="inv-due-date" type="date"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeCreateInvoice()">Atšaukti</button>
+      <button class="btn-primary" onclick="saveInvoice()">Išsaugoti sąskaitą</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Create Client Modal ── -->
+<div id="cli-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="cli-modal-title">Naujas klientas</h3>
+      <button class="btn-icon" onclick="closeCreateClient()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipas</label>
+          <select id="cli-type">
+            <option value="b2c">B2C</option>
+            <option value="b2b">B2B</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Vardas *</label>
+          <input id="cli-name" type="text" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Įmonė</label><input id="cli-company" type="text"></div>
+        <div class="form-group"><label>El. paštas</label><input id="cli-email" type="email"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Tel.</label><input id="cli-phone" type="tel"></div>
+        <div class="form-group"><label>Šalis</label><input id="cli-country" type="text" placeholder="LT, DK, DE…"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Įmonės kodas</label><input id="cli-code" type="text"></div>
+        <div class="form-group"><label>PVM kodas</label><input id="cli-vat" type="text"></div>
+      </div>
+      <div class="form-group"><label>Adresas</label><input id="cli-addr" type="text"></div>
+      <div class="form-group"><label>Pastabos</label><input id="cli-notes" type="text"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeCreateClient()">Atšaukti</button>
+      <button class="btn-primary" onclick="saveClient()">Išsaugoti</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Customer Panel (right drawer) ── -->
@@ -1004,6 +1238,8 @@
 <script src="/js/calculator.js"></script>
 <script src="/js/production.js"></script>
 <script src="/js/products.js"></script>
+<script src="/js/invoices.js"></script>
+<script src="/js/clients.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

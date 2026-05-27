@@ -2823,3 +2823,155 @@ svg.lucide { display: block; }
   overflow: hidden;
 }
 
+
+/* ══════════════════════════════════════════════════════════════════
+   Invoices page
+══════════════════════════════════════════════════════════════════ */
+
+.inv-number { font-weight: 600; font-family: monospace; font-size: 12px; }
+
+.inv-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 10px;
+  margin-top: 4px;
+}
+
+.inv-items-edit-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+}
+.inv-items-edit-table th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.inv-items-edit-table td {
+  padding: 3px 4px;
+  vertical-align: middle;
+}
+.inv-items-edit-table input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+.inv-items-edit-table td.r { text-align: right; font-size: 12px; font-weight: 500; }
+
+.inv-totals-preview {
+  display: flex;
+  gap: 20px;
+  padding: 10px 0 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  justify-content: flex-end;
+}
+.inv-totals-preview strong { color: var(--text); }
+
+.client-suggestions {
+  position: absolute;
+  z-index: 1000;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.client-suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.client-suggestion-item:last-child { border-bottom: none; }
+.client-suggestion-item:hover { background: var(--bg-hover); }
+
+/* Relative parent for suggestions dropdown */
+#inv-client-search + .client-suggestions,
+.form-group:has(#inv-client-search) { position: relative; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Clients page
+══════════════════════════════════════════════════════════════════ */
+
+.client-type-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.client-type-pill.b2b { background: #ede9fe; color: #7c3aed; }
+.client-type-pill.b2c { background: #f1f5f9; color: #64748b; }
+
+.client-row { cursor: pointer; }
+.client-row:hover td { background: var(--bg-hover); }
+
+.cli-name    { font-weight: 500; }
+.cli-company { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+/* Client slide panel body */
+.cli-panel-details { margin-bottom: 14px; }
+.cli-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cli-detail-row span { color: var(--text-muted); }
+.cli-panel-notes {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+.cli-panel-spent {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+.cli-panel-spent strong { color: var(--text); }
+.cli-orders-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.cli-orders-list { display: flex; flex-direction: column; gap: 2px; }
+.cli-order-row {
+  display: grid;
+  grid-template-columns: 40px 60px 1fr 80px 80px;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}

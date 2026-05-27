@@ -34,6 +34,7 @@ app.use('/api/accounting', require('./routes/accounting'));
 app.use('/api/production', require('./routes/production').router);
 app.use('/api/products',  require('./routes/products'));
 app.use('/api/invoices',  require('./routes/invoices'));
+app.use('/api/clients',   require('./routes/clients'));
 
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -76,9 +77,10 @@ app.listen(PORT, () => {
   }
   console.log('');
 
-  const sheetsSync      = require('./services/sheets-sync');
-  const accountingSync  = require('./services/accounting-sync');
-  const { syncProductNames } = require('./services/product-names');
+  const sheetsSync        = require('./services/sheets-sync');
+  const accountingSync    = require('./services/accounting-sync');
+  const { syncProductNames }    = require('./services/product-names');
+  const { importClientsFromOrders } = require('./services/clients-import');
 
   async function autoSyncWoo(label) {
     console.log(`[${label}] WooCommerce sync starting...`);
@@ -124,6 +126,11 @@ app.listen(PORT, () => {
       console.log(`[startup] product names: LT +${r.lt}, DK +${r.dk}`);
     } catch (err) {
       console.error('[startup] product names sync failed:', err.message);
+    }
+    try {
+      importClientsFromOrders();
+    } catch (err) {
+      console.error('[startup] clients import failed:', err.message);
     }
   }, 3000);
 

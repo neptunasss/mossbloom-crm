@@ -243,6 +243,64 @@ try {
 try { db.exec('ALTER TABLE products ADD COLUMN lt_name TEXT'); } catch {}
 try { db.exec('ALTER TABLE products ADD COLUMN dk_name TEXT'); } catch {}
 
+// Invoices — migrate old schema to new if needed
+try {
+  const invCols = db.prepare('PRAGMA table_info(invoices)').all().map(c => c.name);
+  if (invCols.length > 0 && !invCols.includes('series')) {
+    db.exec('DROP TABLE invoices');
+  }
+} catch {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number TEXT UNIQUE,
+    series TEXT DEFAULT 'PAV',
+    issue_date TEXT,
+    due_date TEXT,
+    seller_name TEXT DEFAULT 'MB Sydzei',
+    seller_code TEXT DEFAULT '306918032',
+    seller_vat TEXT DEFAULT 'LT100017928619',
+    seller_address TEXT DEFAULT 'Draugystės 1-takas 8, Raseiniai',
+    seller_phone TEXT DEFAULT '+3706 31 333 13',
+    seller_email TEXT DEFAULT 'info@bloom.lt',
+    seller_bank TEXT DEFAULT 'Revolut',
+    seller_iban TEXT DEFAULT 'LT353250018909471506',
+    seller_signee TEXT DEFAULT 'Simonas Jovaišas',
+    buyer_name TEXT,
+    buyer_code TEXT,
+    buyer_vat TEXT,
+    buyer_address TEXT,
+    line_items TEXT DEFAULT '[]',
+    subtotal REAL DEFAULT 0,
+    vat_amount REAL DEFAULT 0,
+    total REAL DEFAULT 0,
+    order_id TEXT,
+    store_id TEXT,
+    status TEXT DEFAULT 'draft',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+// Clients
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT DEFAULT 'b2c',
+    name TEXT,
+    company TEXT,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    country TEXT,
+    company_code TEXT,
+    vat_code TEXT,
+    notes TEXT,
+    source TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_email ON clients(email) WHERE email IS NOT NULL AND email != ''`);
+} catch {}
+
 // Soft-delete flag for WC orders (B2B are hard-deleted)
 try { db.exec('ALTER TABLE orders_cache ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {}
 

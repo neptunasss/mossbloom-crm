@@ -1,37 +1,42 @@
-1. TRANSACTIONS LIST cleanup
-   - Remove "(SF: FALSE)" and "(SF: TRUE)" from all descriptions in DB:
-     UPDATE accounting_entries SET description = REPLACE(REPLACE(description, ' (SF: FALSE)', ''), ' (SF: TRUE)', '')
-   - Show only category as subtitle, remove source text
-
-2. FORECAST calculation fix
-   - Projected = (current revenue / days passed) * total days in month
-   - Yearly pace = projected * 12
-   - Label: "Mokėti iki 15 [next month]"
-
-3. PVM - calculate for current month, due next month 15th
-   Label example: "Mokėti iki birželio 15"
-
-4. STORE BREAKDOWN with real profit per store
-   Columns: Parduotuvė | Užsakymai | Pajamos | Išlaidos | Pelnas | Marža
+1. KPI CARD HIERARCHY - complete redesign of stats row
+   TWO XL cards on left (wider, taller, more prominent):
+   - PAJAMOS: green accent, 3.5rem value
+   - GRYNASIS PELNAS: blue accent, 3.5rem value
    
-   Cost attribution (exact):
-   - bloom.lt costs = Facebook Ads spend (category=Reklama, description contains FACEBOOK)
-     + proportional share of Žaliavos (bloom.lt revenue / total WC revenue * total Žaliavos)
-   - mossbloom.dk costs = Google Ads spend (category=Reklama, description contains GOOGLE)
-     + proportional share of Žaliavos
-   - mossbloom.de costs = proportional share of Žaliavos only
-   - B2B costs = proportional share of Žaliavos only (no ad spend)
+   FIVE small cards on right in a 2-row grid:
+   - ROI, Užsakymai, Vid. užsakymas, Pelno marža, PVM mokėti
+   - 1.8rem values, no colored borders, plain gray
    
-   Profit = Revenue - Costs
-   Margin = Profit / Revenue * 100
+   Remove Bruto pelnas card entirely - not needed when you have Net profit
 
-5. Add Products page to navigation (empty, "Netrukus..." placeholder)
+2. FIX SCROLLBAR - add to main CSS:
+   html, body { overflow-x: hidden; scrollbar-width: none; }
+   ::-webkit-scrollbar { display: none; }
 
-6. DESIGN - Stripe/Linear/Framer aesthetic
-   - KPI cards: min 120px tall, values 2.8rem bold, padding 24px
-   - Labels: 0.7rem uppercase letter-spacing
-   - Gap between sections: 24px minimum
-   - Hide transactions table by default, show "Rodyti sandorius ↓" button
-   - Card borders: 1px solid #2a2d3a, subtle hover glow
-   - Remove all non-essential text from main view
-   - Premium SaaS feel, not accounting software
+3. FIX PVM CALCULATION
+   PVM is always for current month sales, paid next month.
+   surinktinas = current period income * 21 / 121
+   sumoketas = sum of accounting_entries where category='Mokesčiai' 
+               AND description LIKE '%PVM%' 
+               AND entry_date in current period
+   moketi = surinktinas - sumoketas
+   Label: "Mokėti iki [15th next month name]"
+
+4. PASKUTINIAI UŽSAKYMAI - show B2B orders too
+   Query should be:
+   - Last 5 from orders_cache (WooCommerce)
+   - UNION with last 5 from accounting_entries where source='b2b'
+   - Sort all by date desc, take top 5
+   - Show B2B badge for b2b entries, store badge for WC orders
+   - Convert DKK to EUR for display
+
+5. SYMMETRY - fix layout grid
+   All three bottom panels (Pipeline, Užsakymai, Šaltiniai) must be 
+   equal height with consistent padding 24px
+   Store breakdown table: equal column widths
+   All cards same border radius (12px), same padding (24px)
+
+6. PIPELINE PANEL - populate from Sandoriai
+   Query deals table, show deals where stage != 'won' and stage != 'lost'
+   Show: deal name, value, stage badge
+   If empty show a useful message: "Pridėkite sandorių pipeline stebėjimui"
