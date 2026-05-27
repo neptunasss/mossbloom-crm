@@ -1,8 +1,9 @@
 'use strict';
 
-let invoicesData   = [];
-let invoiceFilter  = { status: 'all', search: '' };
-let invLineCount   = 0;
+let invoicesData  = [];
+let invoicesStats = {};
+let invoiceFilter = { status: 'all', search: '' };
+let invLineCount  = 0;
 
 async function initInvoices() {
   await loadInvoices();
@@ -13,8 +14,10 @@ async function loadInvoices() {
     const p = new URLSearchParams();
     if (invoiceFilter.status !== 'all') p.set('status', invoiceFilter.status);
     if (invoiceFilter.search) p.set('search', invoiceFilter.search);
-    const { invoices } = await api(`/api/invoices?${p}`);
-    invoicesData = invoices || [];
+    const { invoices, stats } = await api(`/api/invoices?${p}`);
+    invoicesData  = invoices || [];
+    invoicesStats = stats   || {};
+    renderInvoicesStats();
     renderInvoicesList();
   } catch (err) {
     toast('Klaida kraunant sąskaitas: ' + err.message, 'error');
@@ -26,6 +29,18 @@ const INV_STATUS = {
   sent:  { label: 'Išsiųsta',   bg: '#dbeafe', text: '#1e40af' },
   paid:  { label: 'Apmokėta',   bg: '#dcfce7', text: '#166534' },
 };
+
+function renderInvoicesStats() {
+  const el = document.getElementById('invoices-stats-row');
+  if (!el) return;
+  const s = invoicesStats;
+  el.innerHTML = `
+    <div class="prod-stat-card"><div class="prod-stat-label">Visos sąskaitos</div><div class="prod-stat-value">${s.total||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">Neapmokėtos</div><div class="prod-stat-value" style="color:var(--orange)">${s.unpaid||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">Apmokėtos</div><div class="prod-stat-value" style="color:var(--green)">${s.paid||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">Bendra suma</div><div class="prod-stat-value">€${Math.round(s.sum||0).toLocaleString('lt-LT')}</div></div>
+  `;
+}
 
 function renderInvoicesList() {
   const tbody = document.getElementById('invoices-tbody');
@@ -50,13 +65,16 @@ function renderInvoicesList() {
       <td>${esc(inv.buyer_name || '—')}</td>
       <td class="text-right">€${Number(inv.total||0).toFixed(2)}</td>
       <td><span class="status-badge" style="background:${st.bg};color:${st.text}">${st.label}</span></td>
-      <td class="text-right" style="white-space:nowrap">
-        <button class="btn-sf" onclick="viewInvoiceHtml(${inv.id})" title="Peržiūrėti">HTML</button>
-        <button class="btn-sf" onclick="downloadInvoicePdf(${inv.id},'${esc(inv.invoice_number)}')" title="PDF">PDF</button>
-        ${inv.status !== 'paid' ? `<button class="btn-sf" style="color:var(--green-deep)" onclick="markInvoicePaid(${inv.id})" title="Pažymėti apmokėta">✓</button>` : ''}
-        <button class="btn-delete" onclick="deleteInvoice(${inv.id})" title="Ištrinti">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
+      <td class="text-right" onclick="event.stopPropagation()">
+        <div class="dot-menu-wrap">
+          <button class="btn-dots" onclick="toggleDotMenu(this)">···</button>
+          <div class="dot-menu">
+            <div class="dot-menu-item" onclick="viewInvoiceHtml(${inv.id})">Peržiūrėti</div>
+            <div class="dot-menu-item" onclick="downloadInvoicePdf(${inv.id},'${esc(inv.invoice_number)}')">Atsisiųsti PDF</div>
+            ${inv.status !== 'paid' ? `<div class="dot-menu-item" onclick="markInvoicePaid(${inv.id})">Pažymėti apmokėta</div>` : ''}
+            <div class="dot-menu-item danger" onclick="deleteInvoice(${inv.id})">Ištrinti</div>
+          </div>
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -84,14 +102,10 @@ function viewInvoiceHtml(id) {
 }
 
 async function downloadInvoicePdf(id, num) {
-  try {
-    const a = document.createElement('a');
-    a.href = `/api/invoices/${id}/pdf`;
-    a.download = `${num}.pdf`;
-    a.click();
-  } catch (err) {
-    toast('Klaida: ' + err.message, 'error');
-  }
+  const a = document.createElement('a');
+  a.href = `/api/invoices/${id}/pdf`;
+  a.download = `${num}.pdf`;
+  a.click();
 }
 
 async function markInvoicePaid(id) {
@@ -115,20 +129,17 @@ async function deleteInvoice(id) {
   }
 }
 
-// ── Create Invoice Modal ──────────────────────────────────────────────────────
+// ── Invoice create full page ──────────────────────────────────────────────────
 
 function openCreateInvoice(prefill) {
   invLineCount = 0;
   document.getElementById('inv-lines-tbody').innerHTML = '';
-  updateInvoiceTotals();
 
-  // Reset dates
   const today = new Date().toISOString().slice(0, 10);
   const due   = new Date(); due.setDate(due.getDate() + 14);
   document.getElementById('inv-issue-date').value = today;
   document.getElementById('inv-due-date').value   = due.toISOString().slice(0, 10);
 
-  // Reset buyer
   document.getElementById('inv-b-name').value = prefill?.buyer_name || '';
   document.getElementById('inv-b-code').value = prefill?.buyer_code || '';
   document.getElementById('inv-b-vat').value  = prefill?.buyer_vat  || '';
@@ -136,14 +147,14 @@ function openCreateInvoice(prefill) {
   document.getElementById('inv-client-search').value = '';
   document.getElementById('inv-client-suggestions').innerHTML = '';
 
-  // Add one blank line
   addInvoiceLine(prefill?.item_name || '', prefill?.item_price || '');
+  updateInvoiceTotals();
 
-  document.getElementById('inv-modal').hidden = false;
+  switchView('inv-create');
 }
 
-function closeCreateInvoice() {
-  document.getElementById('inv-modal').hidden = true;
+function closeInvCreate() {
+  switchView('invoices');
 }
 
 function addInvoiceLine(name = '', price = '') {
@@ -152,20 +163,17 @@ function addInvoiceLine(name = '', price = '') {
   const tr = document.createElement('tr');
   tr.id = `inv-line-${n}`;
   tr.innerHTML = `
-    <td>
-      <input type="text" class="inv-line-name" value="${esc(name)}" placeholder="Pavadinimas" style="width:100%"
-        oninput="updateInvoiceTotals()" list="inv-products-list">
-    </td>
-    <td><input type="text" class="inv-line-unit" value="vnt." style="width:100%" oninput="updateInvoiceTotals()"></td>
-    <td><input type="number" class="inv-line-qty" value="1" min="0.01" step="0.01" style="width:100%" oninput="updateInvoiceTotals()"></td>
-    <td><input type="number" class="inv-line-price" value="${price}" min="0" step="0.01" style="width:100%" oninput="updateInvoiceTotals()"></td>
+    <td>${n}</td>
+    <td><input type="text" class="inv-line-name" value="${esc(name)}" placeholder="Pavadinimas" oninput="updateInvoiceTotals();updateLivePreview()" list="inv-products-list"></td>
+    <td><input type="text" class="inv-line-unit" value="vnt." oninput="updateLivePreview()"></td>
+    <td><input type="number" class="inv-line-qty" value="1" min="0.01" step="0.01" oninput="updateInvoiceTotals();updateLivePreview()"></td>
+    <td><input type="number" class="inv-line-price" value="${price}" min="0" step="0.01" oninput="updateInvoiceTotals();updateLivePreview()"></td>
     <td class="r inv-line-sum">€0.00</td>
-    <td><button class="btn-delete" onclick="removeInvoiceLine(${n})" style="padding:2px 4px">✕</button></td>
+    <td><button class="btn-delete" onclick="removeInvoiceLine(${n})" style="padding:2px 6px">✕</button></td>
   `;
   document.getElementById('inv-lines-tbody').appendChild(tr);
   updateInvoiceTotals();
 
-  // Populate products datalist
   if (!document.getElementById('inv-products-list')) {
     const dl = document.createElement('datalist');
     dl.id = 'inv-products-list';
@@ -184,6 +192,7 @@ function removeInvoiceLine(n) {
   const el = document.getElementById(`inv-line-${n}`);
   if (el) el.remove();
   updateInvoiceTotals();
+  updateLivePreview();
 }
 
 function updateInvoiceTotals() {
@@ -198,10 +207,106 @@ function updateInvoiceTotals() {
   });
   const vat   = Math.round(sub * 0.21 * 100) / 100;
   const total = Math.round((sub + vat) * 100) / 100;
-  const el = id => document.getElementById(id);
-  if (el('inv-preview-sub'))   el('inv-preview-sub').textContent   = '€' + sub.toFixed(2);
-  if (el('inv-preview-vat'))   el('inv-preview-vat').textContent   = '€' + vat.toFixed(2);
-  if (el('inv-preview-total')) el('inv-preview-total').textContent = '€' + total.toFixed(2);
+  const g = id => document.getElementById(id);
+  if (g('inv-preview-sub'))   g('inv-preview-sub').textContent   = '€' + sub.toFixed(2);
+  if (g('inv-preview-vat'))   g('inv-preview-vat').textContent   = '€' + vat.toFixed(2);
+  if (g('inv-preview-total')) g('inv-preview-total').textContent = '€' + total.toFixed(2);
+}
+
+// ── Live preview ──────────────────────────────────────────────────────────────
+
+const LT_MONTHS = ['sausio','vasario','kovo','balandžio','gegužės','birželio',
+  'liepos','rugpjūčio','rugsėjo','spalio','lapkričio','gruodžio'];
+
+function ltFmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()} m. ${LT_MONTHS[d.getMonth()]} ${d.getDate()} d.`;
+}
+
+function updateLivePreview() {
+  const frame = document.getElementById('inv-preview-frame');
+  if (!frame) return;
+
+  const g = id => document.getElementById(id)?.value || '';
+  const issueDate = g('inv-issue-date');
+  const dueDate   = g('inv-due-date');
+
+  let sub = 0;
+  const lineRows = [];
+  let lineNum = 0;
+  document.querySelectorAll('#inv-lines-tbody tr').forEach(tr => {
+    lineNum++;
+    const name  = tr.querySelector('.inv-line-name')?.value || '';
+    const unit  = tr.querySelector('.inv-line-unit')?.value || 'vnt.';
+    const qty   = parseFloat(tr.querySelector('.inv-line-qty')?.value  || 1);
+    const price = parseFloat(tr.querySelector('.inv-line-price')?.value || 0);
+    const line  = Math.round(qty * price * 100) / 100;
+    sub += line;
+    lineRows.push(`<tr><td class="c">${lineNum}</td><td>${esc(name)}</td><td class="c">${esc(unit)}</td><td class="r">${qty}</td><td class="r">${price.toFixed(2)}</td><td class="r">${line.toFixed(2)}</td></tr>`);
+  });
+  while (lineRows.length < 4) lineRows.push('<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>');
+
+  const vat   = Math.round(sub * 0.21 * 100) / 100;
+  const total = Math.round((sub + vat) * 100) / 100;
+
+  const sName = g('inv-s-name'); const sCode = g('inv-s-code'); const sVat = g('inv-s-vat');
+  const sAddr = g('inv-s-addr'); const sPhone = g('inv-s-phone'); const sEmail = g('inv-s-email');
+  const sBank = g('inv-s-bank'); const sIban = g('inv-s-iban'); const sSignee = g('inv-s-signee');
+  const bName = g('inv-b-name'); const bCode = g('inv-b-code'); const bVat = g('inv-b-vat');
+  const bAddr = g('inv-b-addr');
+
+  const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const previewNum = `PAV${today}-01`;
+
+  frame.srcdoc = `<!DOCTYPE html><html lang="lt"><head><meta charset="UTF-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:10px;color:#000;background:#fff}
+.page{width:100%;padding:12mm 12mm 10mm;min-height:100%}
+h1{font-size:13px;text-transform:uppercase;text-align:center;font-weight:700;letter-spacing:1px;margin-bottom:5px}
+.inv-meta{text-align:center;margin-bottom:12px;font-size:10px}
+.inv-meta p{margin:2px 0}
+.parties{width:100%;border-collapse:collapse;margin-bottom:12px}
+.parties td{width:50%;vertical-align:top;padding:6px 8px;border:1px solid #000;font-size:10px;line-height:1.6}
+.section-hdr{font-weight:700;text-transform:uppercase;border-bottom:1px solid #ccc;margin-bottom:5px;padding-bottom:2px}
+.items{width:100%;border-collapse:collapse;margin-bottom:12px}
+.items th,.items td{border:1px solid #000;padding:4px 5px}
+.items th{background:#f0f0f0;font-weight:700;text-align:center;font-size:9px}
+.items td.c{text-align:center}.items td.r{text-align:right}
+.totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
+.totals{border-collapse:collapse;min-width:220px}
+.totals td{padding:3px 8px;border:1px solid #000;font-size:10px}
+.totals td:last-child{text-align:right;min-width:80px}
+.totals tr.tf td{font-weight:700;background:#f0f0f0}
+.sig{display:flex;justify-content:space-between;margin-top:20px;font-size:10px}
+.sig-line{border-top:1px solid #000;min-width:180px;padding-top:3px;text-align:center}
+</style></head><body><div class="page">
+<h1>PVM SĄSKAITA FAKTŪRA</h1>
+<div class="inv-meta"><p>Serija PAV Nr. ${previewNum}</p><p>${ltFmtDate(issueDate)}</p></div>
+<table class="parties"><tr>
+<td><div class="section-hdr">Pardavėjo rekvizitai</div>
+<strong>${esc(sName)}</strong><br>Įmonės kodas: ${esc(sCode)}<br>PVM kodas: ${esc(sVat)}<br>
+Adresas: ${esc(sAddr)}<br>Tel.: ${esc(sPhone)}<br>El. paštas: ${esc(sEmail)}<br>
+Bankas: ${esc(sBank)}<br>IBAN: ${esc(sIban)}</td>
+<td><div class="section-hdr">Pirkėjo rekvizitai</div>
+<strong>${esc(bName)||'—'}</strong><br>
+${bCode?`Įmonės kodas: ${esc(bCode)}<br>`:''}${bVat?`PVM kodas: ${esc(bVat)}<br>`:''}${bAddr?`Adresas: ${esc(bAddr)}<br>`:''}&nbsp;
+</td></tr></table>
+<table class="items"><thead><tr>
+<th style="width:4%">Nr.</th><th style="width:44%">Pavadinimas</th><th style="width:9%">Mat. vnt.</th>
+<th class="r" style="width:8%">Kiekis</th><th class="r" style="width:17%">Kaina be PVM, €</th><th class="r" style="width:18%">Suma be PVM, €</th>
+</tr></thead><tbody>${lineRows.join('')}</tbody></table>
+<div class="totals-wrap"><table class="totals">
+<tr><td>Iš viso be PVM:</td><td>${sub.toFixed(2)} €</td></tr>
+<tr><td>PVM 21%:</td><td>${vat.toFixed(2)} €</td></tr>
+<tr class="tf"><td>Viso su PVM:</td><td>${total.toFixed(2)} €</td></tr>
+</table></div>
+<div class="sig">
+<div><div class="sig-line">Sąskaitą išrašė: ${esc(sSignee)}</div></div>
+<div><div class="sig-line">Sąskaitą priėmė: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div></div>
+</div>
+</div></body></html>`;
 }
 
 async function saveInvoice() {
@@ -218,29 +323,30 @@ async function saveInvoice() {
     });
   });
 
+  const g = id => document.getElementById(id)?.value || '';
   const data = {
-    seller_name:    document.getElementById('inv-s-name').value,
-    seller_code:    document.getElementById('inv-s-code').value,
-    seller_vat:     document.getElementById('inv-s-vat').value,
-    seller_bank:    document.getElementById('inv-s-bank').value,
-    seller_iban:    document.getElementById('inv-s-iban').value,
-    seller_phone:   document.getElementById('inv-s-phone').value,
-    seller_address: document.getElementById('inv-s-addr').value,
-    seller_email:   document.getElementById('inv-s-email').value,
-    seller_signee:  document.getElementById('inv-s-signee').value,
+    seller_name:    g('inv-s-name'),
+    seller_code:    g('inv-s-code'),
+    seller_vat:     g('inv-s-vat'),
+    seller_bank:    g('inv-s-bank'),
+    seller_iban:    g('inv-s-iban'),
+    seller_phone:   g('inv-s-phone'),
+    seller_address: g('inv-s-addr'),
+    seller_email:   g('inv-s-email'),
+    seller_signee:  g('inv-s-signee'),
     buyer_name:     buyerName,
-    buyer_code:     document.getElementById('inv-b-code').value,
-    buyer_vat:      document.getElementById('inv-b-vat').value,
-    buyer_address:  document.getElementById('inv-b-addr').value,
-    issue_date:     document.getElementById('inv-issue-date').value,
-    due_date:       document.getElementById('inv-due-date').value,
+    buyer_code:     g('inv-b-code'),
+    buyer_vat:      g('inv-b-vat'),
+    buyer_address:  g('inv-b-addr'),
+    issue_date:     g('inv-issue-date'),
+    due_date:       g('inv-due-date'),
     line_items:     lines,
   };
 
   try {
     const { id } = await api('/api/invoices', { method: 'POST', body: JSON.stringify(data) });
     toast('Sąskaita sukurta');
-    closeCreateInvoice();
+    switchView('invoices');
     await loadInvoices();
     viewInvoiceHtml(id);
   } catch (err) {
@@ -248,7 +354,7 @@ async function saveInvoice() {
   }
 }
 
-// ── Client autocomplete in invoice modal ─────────────────────────────────────
+// ── Client autocomplete ───────────────────────────────────────────────────────
 
 let _clientsCache = null;
 
@@ -286,4 +392,21 @@ function selectInvoiceClient(id) {
   document.getElementById('inv-b-addr').value  = c.address || '';
   document.getElementById('inv-client-search').value = c.name || '';
   document.getElementById('inv-client-suggestions').innerHTML = '';
+  updateLivePreview();
 }
+
+// ── Dot menu shared helper ────────────────────────────────────────────────────
+
+function toggleDotMenu(btn) {
+  const menu = btn.nextElementSibling;
+  const isOpen = menu.classList.contains('open');
+  // Close all other open menus
+  document.querySelectorAll('.dot-menu.open').forEach(m => m.classList.remove('open'));
+  if (!isOpen) menu.classList.add('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dot-menu-wrap')) {
+    document.querySelectorAll('.dot-menu.open').forEach(m => m.classList.remove('open'));
+  }
+});

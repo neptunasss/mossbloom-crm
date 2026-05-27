@@ -28,6 +28,11 @@ const COUNTRY_FLAGS = {
   LT:'🇱🇹', DK:'🇩🇰', DE:'🇩🇪', SE:'🇸🇪', NO:'🇳🇴', FI:'🇫🇮', GB:'🇬🇧',
   US:'🇺🇸', FR:'🇫🇷', NL:'🇳🇱', BE:'🇧🇪', PL:'🇵🇱', EE:'🇪🇪', LV:'🇱🇻',
 };
+const COUNTRY_NAMES = {
+  LT:'Lietuva', DK:'Danija', DE:'Vokietija', SE:'Švedija', NO:'Norvegija',
+  FI:'Suomija', GB:'Didžioji Britanija', US:'JAV', FR:'Prancūzija',
+  NL:'Nyderlandai', BE:'Belgija', PL:'Lenkija', EE:'Estija', LV:'Latvija',
+};
 
 function renderClientsStats() {
   const el = document.getElementById('clients-stats-row');
@@ -67,16 +72,20 @@ function renderClientsTable() {
         ${c.company ? `<div class="cli-company">${esc(c.company)}</div>` : ''}
       </td>
       <td class="col-email">${esc(c.email || '—')}</td>
-      <td>${flag} ${esc(c.country || '—')}</td>
+      <td>${flag ? `${flag} ${esc(COUNTRY_NAMES[c.country] || c.country)}` : '—'}</td>
       <td class="text-right">${c.order_count}</td>
       <td class="text-right">${spent}</td>
       <td>${lastOrder}</td>
-      <td class="text-right" style="white-space:nowrap" onclick="event.stopPropagation()">
-        <button class="btn-sf" onclick="openCreateInvoiceForClient(${c.id})" title="Sukurti sąskaitą">SF</button>
-        <button class="btn-sf" onclick="openEditClient(${c.id})" title="Redaguoti">✎</button>
-        <button class="btn-delete" onclick="deleteClient(${c.id})" title="Ištrinti">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
+      <td class="text-right" onclick="event.stopPropagation()">
+        <div class="dot-menu-wrap">
+          <button class="btn-dots" onclick="toggleDotMenu(this)">···</button>
+          <div class="dot-menu">
+            <div class="dot-menu-item" onclick="openClientPanel(${c.id})">Peržiūrėti</div>
+            <div class="dot-menu-item" onclick="openCreateInvoiceForClient(${c.id})">Sukurti sąskaitą</div>
+            <div class="dot-menu-item" onclick="openEditClient(${c.id})">Redaguoti</div>
+            <div class="dot-menu-item danger" onclick="deleteClient(${c.id})">Ištrinti</div>
+          </div>
+        </div>
       </td>
     </tr>`;
   }).join('');

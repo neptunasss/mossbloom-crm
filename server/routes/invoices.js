@@ -89,7 +89,7 @@ h1 { font-size: 15px; text-transform: uppercase; text-align: center; font-weight
 </head>
 <body>
 <div class="page">
-  <h1>PVM sąskaita faktūra</h1>
+  <h1>PVM SĄSKAITA FAKTŪRA</h1>
   <div class="inv-meta">
     <p>Serija ${esc(inv.series || 'PAV')} Nr. ${esc(inv.invoice_number)}</p>
     <p>${ltDate(inv.issue_date)}</p>
@@ -149,7 +149,7 @@ h1 { font-size: 15px; text-transform: uppercase; text-align: center; font-weight
       <div class="sig-line">Sąskaitą išrašė: ${esc(inv.seller_signee || '')}</div>
     </div>
     <div>
-      <div class="sig-line">Sąskaitą gavo: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+      <div class="sig-line">Sąskaitą priėmė: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
     </div>
   </div>
 </div>
@@ -168,8 +168,15 @@ router.get('/', requireAuth, (req, res) => {
   q += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   params.push(Number(limit), Number(offset));
   const rows = db.prepare(q).all(...params);
-  const total = db.prepare('SELECT COUNT(*) as cnt FROM invoices').get().cnt;
-  res.json({ invoices: rows, total });
+  const statsRow = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN status IN ('draft','sent') THEN 1 ELSE 0 END) as unpaid,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid,
+      SUM(total) as sum
+    FROM invoices
+  `).get();
+  res.json({ invoices: rows, stats: statsRow });
 });
 
 // POST /api/invoices

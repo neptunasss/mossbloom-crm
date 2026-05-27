@@ -2976,6 +2976,125 @@ svg.lucide { display: block; }
   color: var(--text-secondary);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   "···" dot-menu dropdown
+══════════════════════════════════════════════════════════════════ */
+
+.dot-menu-wrap { position: relative; display: inline-block; }
+
+.btn-dots {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  letter-spacing: 1px;
+  transition: background 0.12s;
+}
+.btn-dots:hover { background: var(--bg-hover); color: var(--text); }
+
+.dot-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  z-index: 200;
+  min-width: 160px;
+  overflow: hidden;
+}
+.dot-menu.open { display: block; }
+
+.dot-menu-item {
+  padding: 9px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.dot-menu-item:hover { background: var(--bg-hover); }
+.dot-menu-item.danger { color: var(--red); }
+.dot-menu-item.danger:hover { background: var(--red-pastel); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Invoice create page (2-column layout)
+══════════════════════════════════════════════════════════════════ */
+
+.inv-create-layout {
+  display: grid;
+  grid-template-columns: 58% 42%;
+  gap: 0;
+  height: calc(100vh - var(--header-h));
+  overflow: hidden;
+}
+
+.inv-create-form {
+  padding: 20px 24px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.inv-create-preview {
+  display: flex;
+  flex-direction: column;
+  background: #e8e8ed;
+  overflow: hidden;
+}
+
+.inv-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  padding: 10px 16px 6px;
+  background: #e8e8ed;
+}
+
+.inv-preview-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  margin: 0 12px 12px;
+  width: calc(100% - 24px);
+  border-radius: 4px;
+}
+
+.inv-create-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.inv-section-wrap { border: none; padding: 0; margin: 0; }
+.inv-section-wrap summary::-webkit-details-marker { display: none; }
+.inv-section-wrap summary { user-select: none; }
+
+/* Clients table column widths */
+.cli-table colgroup col.col-type    { width: 60px; }
+.cli-table colgroup col.col-name    { width: 200px; }
+.cli-table colgroup col.col-email   { min-width: 180px; }
+.cli-table colgroup col.col-country { width: 100px; }
+.cli-table colgroup col.col-orders  { width: 90px; }
+.cli-table colgroup col.col-spent   { width: 100px; }
+.cli-table colgroup col.col-last    { width: 130px; }
+.cli-table colgroup col.col-actions { width: 60px; }
+
+/* Invoices table */
+.inv-table { width: 100%; }
+
 /* macOS segmented control */
 .seg-control {
   display: inline-flex;

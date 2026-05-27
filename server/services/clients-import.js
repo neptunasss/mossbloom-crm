@@ -8,6 +8,9 @@ function importClientsFromOrders() {
     INSERT OR IGNORE INTO clients (name, email, country, type, source)
     VALUES (?, ?, ?, 'b2c', 'woocommerce')
   `);
+  const updCountry = db.prepare(`
+    UPDATE clients SET country = ? WHERE email = ? AND (country IS NULL OR country = '')
+  `);
 
   const rows = db.prepare(`
     SELECT customer_email, customer_name, data
@@ -20,14 +23,19 @@ function importClientsFromOrders() {
   const seen = new Set();
   let wcCount = 0;
   for (const row of rows) {
-    if (seen.has(row.customer_email)) continue;
-    seen.add(row.customer_email);
     let country = '';
     try {
       const order = JSON.parse(row.data);
       country = order.billing?.country || '';
     } catch {}
+    if (seen.has(row.customer_email)) {
+      // Still try to fill missing country for existing records
+      if (country) updCountry.run(country, row.customer_email);
+      continue;
+    }
+    seen.add(row.customer_email);
     insB2c.run(row.customer_name || '', row.customer_email, country);
+    if (country) updCountry.run(country, row.customer_email);
     wcCount++;
   }
 
