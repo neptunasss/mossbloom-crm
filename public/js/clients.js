@@ -34,10 +34,10 @@ function renderClientsStats() {
   if (!el) return;
   const s = clientsStats;
   el.innerHTML = `
-    <div class="kpi-card"><div class="kpi-label">Viso klientų</div><div class="kpi-value">${s.total||0}</div></div>
-    <div class="kpi-card"><div class="kpi-label">B2B</div><div class="kpi-value" style="color:var(--purple)">${s.b2b||0}</div></div>
-    <div class="kpi-card"><div class="kpi-label">B2C</div><div class="kpi-value">${s.b2c||0}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Šalys</div><div class="kpi-value">${s.countries||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">Viso klientų</div><div class="prod-stat-value">${s.total||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">B2B</div><div class="prod-stat-value" style="color:var(--purple)">${s.b2b||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">B2C</div><div class="prod-stat-value">${s.b2c||0}</div></div>
+    <div class="prod-stat-card"><div class="prod-stat-label">Šalys</div><div class="prod-stat-value">${s.countries||0}</div></div>
   `;
 }
 

@@ -2975,3 +2975,30 @@ svg.lucide { display: block; }
   font-size: 11px;
   color: var(--text-secondary);
 }
+
+/* macOS segmented control */
+.seg-control {
+  display: inline-flex;
+  background: rgba(0,0,0,0.06);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 1px;
+}
+.seg-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.14), 0 0 0 0.5px rgba(0,0,0,0.06);
+}

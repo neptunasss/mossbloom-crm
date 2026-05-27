@@ -676,21 +676,21 @@
 
     <!-- ── Clients view ── -->
     <div class="view" id="view-clients" hidden>
-      <div class="view-toolbar">
-        <div class="toolbar-left">
-          <div class="toggle-group">
-            <button class="toggle-btn active cli-filter-type" data-type="all" onclick="setClientType('all')">Visi</button>
-            <button class="toggle-btn cli-filter-type" data-type="b2b" onclick="setClientType('b2b')">B2B</button>
-            <button class="toggle-btn cli-filter-type" data-type="b2c" onclick="setClientType('b2c')">B2C</button>
-          </div>
-          <input type="text" id="cli-search" class="search-input" placeholder="Vardas, el. paštas…" oninput="searchClients(this.value)" style="width:220px">
-        </div>
-        <div class="toolbar-right">
-          <button class="btn-primary" onclick="openCreateClient()">+ Naujas klientas</button>
-        </div>
-      </div>
       <div class="content-body">
-        <div id="clients-stats-row" class="kpi-row" style="margin-bottom:16px"></div>
+        <div id="clients-stats-row" class="products-stats-row"></div>
+        <div class="filters-bar" style="margin-bottom:16px">
+          <div class="store-tabs">
+            <div class="seg-control">
+              <button class="seg-btn active cli-filter-type" data-type="all" onclick="setClientType('all')">Visi</button>
+              <button class="seg-btn cli-filter-type" data-type="b2b" onclick="setClientType('b2b')">B2B</button>
+              <button class="seg-btn cli-filter-type" data-type="b2c" onclick="setClientType('b2c')">B2C</button>
+            </div>
+          </div>
+          <div class="filter-controls">
+            <input type="text" id="cli-search" class="search-input" placeholder="Vardas, el. paštas…" oninput="searchClients(this.value)" style="width:220px">
+            <button class="btn-primary" onclick="openCreateClient()">+ Naujas klientas</button>
+          </div>
+        </div>
         <div class="table-wrap">
           <table class="data-table">
             <thead>
