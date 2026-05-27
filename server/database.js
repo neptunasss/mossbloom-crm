@@ -239,6 +239,10 @@ try {
   console.error('[db] products setup error:', e.message);
 }
 
+// WooCommerce product names per store
+try { db.exec('ALTER TABLE products ADD COLUMN lt_name TEXT'); } catch {}
+try { db.exec('ALTER TABLE products ADD COLUMN dk_name TEXT'); } catch {}
+
 // Soft-delete flag for WC orders (B2B are hard-deleted)
 try { db.exec('ALTER TABLE orders_cache ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {}
 

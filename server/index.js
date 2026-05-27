@@ -76,8 +76,9 @@ app.listen(PORT, () => {
   }
   console.log('');
 
-  const sheetsSync     = require('./services/sheets-sync');
-  const accountingSync = require('./services/accounting-sync');
+  const sheetsSync      = require('./services/sheets-sync');
+  const accountingSync  = require('./services/accounting-sync');
+  const { syncProductNames } = require('./services/product-names');
 
   async function autoSyncWoo(label) {
     console.log(`[${label}] WooCommerce sync starting...`);
@@ -118,6 +119,12 @@ app.listen(PORT, () => {
     await autoSyncWoo('startup');
     await autoSyncAccounting('startup');
     await autoSyncSheets('startup');
+    try {
+      const r = await syncProductNames();
+      console.log(`[startup] product names: LT +${r.lt}, DK +${r.dk}`);
+    } catch (err) {
+      console.error('[startup] product names sync failed:', err.message);
+    }
   }, 3000);
 
   setInterval(() => autoSyncWoo('auto-sync'), 30 * 60 * 1000);

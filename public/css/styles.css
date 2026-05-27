@@ -2592,6 +2592,18 @@ svg.lucide { display: block; }
 .prod-row.expanded { background: rgba(0,122,255,0.04); }
 
 .prod-name-cell { font-weight: 500; }
+.prod-internal-name { display: block; }
+.prod-wc-name {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
 
 .prod-store-pill {
   display: inline-block;

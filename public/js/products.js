@@ -87,9 +87,23 @@ function renderProductsTable() {
     const isExp    = expandedProductId === p.id;
     const barW     = Math.min(p.margin_pct, 100).toFixed(1);
 
+    // Show real WC product name when store filter matches
+    const displayName = (productFilter.store === 'LT' && p.lt_name)
+      ? p.lt_name
+      : (productFilter.store === 'DK' && p.dk_name)
+      ? p.dk_name
+      : p.name;
+    const hasWcName = (p.store === 'LT' && p.lt_name) || (p.store === 'DK' && p.dk_name);
+    const wcNameHint = hasWcName
+      ? ` <span class="prod-wc-name" title="WooCommerce: ${esc(p.store === 'LT' ? p.lt_name : p.dk_name)}">${esc(p.store === 'LT' ? p.lt_name : p.dk_name)}</span>`
+      : '';
+
     const mainRow = `
 <tr class="prod-row${isExp ? ' expanded' : ''}" data-id="${p.id}" onclick="toggleProductExpand(${p.id})">
-  <td class="prod-name-cell">${esc(p.name)}</td>
+  <td class="prod-name-cell">
+    <span class="prod-internal-name">${esc(p.name)}</span>
+    ${hasWcName ? `<span class="prod-wc-name">${esc(p.store === 'LT' ? (p.lt_name||'') : (p.dk_name||''))}</span>` : ''}
+  </td>
   <td><span class="prod-store-pill prod-store-${storeCls}">${esc(p.store)}</span></td>
   <td style="color:var(--text-secondary);font-size:12px">${esc(p.moss_type)}</td>
   <td class="text-right">€${p2(p.total_cost)}</td>
@@ -182,6 +196,21 @@ function setProductType(type) {
 function setProductSort(sort) {
   productFilter.sort = sort;
   renderProductsTable();
+}
+
+async function syncProductNamesFromWC() {
+  const btn = document.getElementById('sync-names-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '↻ Syncing…'; }
+  try {
+    const r = await api('/api/products/sync-names', { method: 'POST' });
+    toast(`Atnaujinta: LT ${r.lt}, DK ${r.dk} pavadinimų`);
+    productsData = [];
+    await loadProducts();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Sync names'; }
+  }
 }
 
 // ── B2B Slide Panel ─────────────────────────────────────────────────────────

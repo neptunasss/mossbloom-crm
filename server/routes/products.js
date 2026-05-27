@@ -45,9 +45,20 @@ function dkMossType(name) {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
+// POST /api/products/sync-names — fetch real product names from WooCommerce
+router.post('/sync-names', requireAuth, async (req, res) => {
+  try {
+    const { syncProductNames } = require('../services/product-names');
+    const result = await syncProductNames();
+    res.json({ ok: true, lt: result.lt, dk: result.dk });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/products
 router.get('/', requireAuth, (req, res) => {
-  const products = db.prepare('SELECT * FROM products ORDER BY margin_pct DESC').all();
+  const products = db.prepare('SELECT id,sku,name,moss_type,store,frame_cost,moss_cost,extras_cost,total_cost,sell_price_eur,sell_price_dkk,gross_profit,margin_pct,lt_name,dk_name FROM products ORDER BY margin_pct DESC').all();
 
   // Build lookup: `${store}:${size}:${type}` → product
   const productMap = {};
