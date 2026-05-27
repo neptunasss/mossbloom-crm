@@ -38,8 +38,8 @@ function ltMossType(name) {
 }
 
 function dkMossType(name) {
+  if (/trio/i.test(name)) return 'trio';           // must check before pudemos
   if (/pude[\s-]?mos|pudemos/i.test(name)) return 'ball';
-  if (/trio/i.test(name)) return 'trio';
   return 'mix';
 }
 
@@ -74,7 +74,7 @@ router.get('/', requireAuth, (req, res) => {
     if (!size) {
       if (/trio/i.test(p.name)) size = 'trio';
     }
-    const type = p.moss_type.toLowerCase().includes('mix') ? 'mix' : 'ball';
+    const type = /trio/i.test(p.name) ? 'trio' : p.moss_type.toLowerCase().includes('mix') ? 'mix' : 'ball';
     if (size) productMap[`${p.store}:${size}:${type}`] = p;
   }
 
@@ -99,8 +99,8 @@ router.get('/', requireAuth, (req, res) => {
         size = ltSizeFromName(item.name);
         type = ltMossType(item.name);
       } else if (row.store_id === 'mossbloom_dk') {
-        size = dkSizeFromMeta(item.meta_data);
         type = dkMossType(item.name);
+        size = type === 'trio' ? 'trio' : dkSizeFromMeta(item.meta_data);
       } else {
         continue; // DE — skip
       }
