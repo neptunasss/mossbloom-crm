@@ -163,7 +163,7 @@ function renderOrders(orders) {
       </td>
       <td class="col-order">${orderNum}</td>
       <td class="col-customer">${customerCell}</td>
-      <td class="col-email">${esc(o.customer_email || (isB2b && o.description ? o.description : ''))}</td>
+      <td class="col-email">${esc(o.customer_email || '')}</td>
       <td class="col-date">${date}</td>
       <td><span class="status-badge" style="background:${status.bg};color:${status.text}">${esc(o.status)}</span></td>
       <td>${prodBadge}</td>
@@ -172,6 +172,13 @@ function renderOrders(orders) {
       <td class="col-actions">
         <button class="btn-file" onclick="openFileModal('${esc(o.store_id)}',${o.order_id},null)" title="Files">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button class="btn-edit-order btn-edit-order-js"
+          data-store="${storeIdEsc}" data-order="${orderIdEsc}"
+          data-b2b="${isB2b}" data-name="${esc(o.customer_name||'')}"
+          data-status="${esc(o.status||'')}" data-desc="${esc(o.description||'')}"
+          data-total="${parseFloat(o.total)||0}" title="Redaguoti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
         <button class="btn-sf" onclick="openSfModal('${storeIdEsc}','${orderIdEsc}','${esc(o.customer_name||'')}',${parseFloat(o.total)||0},'${esc(o.currency||'EUR')}')" title="Sąskaita faktūra">SF</button>
         <button class="btn-delete" onclick="deleteOrder('${storeIdEsc}','${orderIdEsc}')" title="Ištrinti">
@@ -184,6 +191,15 @@ function renderOrders(orders) {
   // Click-to-open customer panel
   tbody.querySelectorAll('.customer-link').forEach(el => {
     el.addEventListener('click', () => openCustomerPanel(el.dataset.email));
+  });
+
+  // Edit order buttons
+  tbody.querySelectorAll('.btn-edit-order-js').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openEditOrder(btn.dataset.store, btn.dataset.order,
+        btn.dataset.b2b === 'true', btn.dataset.name,
+        btn.dataset.status, btn.dataset.desc, parseFloat(btn.dataset.total));
+    });
   });
 }
 
@@ -483,6 +499,8 @@ function setupListeners() {
   document.getElementById('customer-overlay').addEventListener('click', closeCustomerPanel);
   // Client panel close
   document.getElementById('client-overlay').addEventListener('click', closeClientPanel);
+  // Edit order panel close
+  document.getElementById('edit-order-overlay').addEventListener('click', closeEditOrder);
 
   // Store tabs
   document.querySelectorAll('[data-store]').forEach(btn => {
@@ -678,6 +696,70 @@ async function uploadFile(input) {
     toast('Upload failed: ' + err.message, 'error');
   }
   input.value = '';
+}
+
+// ── Edit Order Slide Panel ────────────────────────────────────────────────────
+
+let _editOrderCtx = null;
+
+function openEditOrder(storeId, orderId, isB2b, name, status, description, total) {
+  _editOrderCtx = { storeId, orderId, isB2b };
+  const panel   = document.getElementById('edit-order-panel');
+  const overlay = document.getElementById('edit-order-overlay');
+
+  document.getElementById('eo-name').value  = name || '';
+  document.getElementById('eo-notes').value = '';
+
+  const statusRow = document.getElementById('eo-status-row');
+  const b2bFields  = document.getElementById('eo-b2b-fields');
+  statusRow.hidden = !!isB2b;
+  b2bFields.hidden = !isB2b;
+
+  if (!isB2b) {
+    document.getElementById('eo-status').value = status || '';
+  } else {
+    document.getElementById('eo-desc').value   = description || '';
+    document.getElementById('eo-amount').value = total || '';
+  }
+
+  panel.classList.add('open');
+  overlay.classList.add('visible');
+}
+
+function closeEditOrder() {
+  document.getElementById('edit-order-panel').classList.remove('open');
+  document.getElementById('edit-order-overlay').classList.remove('visible');
+  _editOrderCtx = null;
+}
+
+async function saveEditOrder() {
+  if (!_editOrderCtx) return;
+  const { storeId, orderId, isB2b } = _editOrderCtx;
+  const data = {};
+
+  if (isB2b) {
+    const name   = document.getElementById('eo-name').value.trim();
+    const amount = document.getElementById('eo-amount').value;
+    const desc   = document.getElementById('eo-desc').value.trim();
+    if (name)   data.customer_name = name;
+    if (amount) data.amount        = parseFloat(amount);
+    if (desc)   data.description   = desc;
+  } else {
+    const status = document.getElementById('eo-status').value;
+    if (status) data.status = status;
+  }
+
+  try {
+    await api(`/api/orders/${encodeURIComponent(storeId)}/${encodeURIComponent(orderId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    toast('Užsakymas atnaujintas');
+    closeEditOrder();
+    await loadOrders();
+  } catch (err) {
+    toast('Klaida: ' + err.message, 'error');
+  }
 }
 
 async function deleteFile(id) {

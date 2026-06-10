@@ -56,11 +56,8 @@
 /* ── Reset ── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body { overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.2) transparent; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+html, body { overflow-x: hidden; scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -1505,39 +1502,27 @@ svg.lucide { display: block; }
   to { transform: rotate(360deg); }
 }
 
-/* Stats wrapper: 2 XL cards left + 5 SM cards right */
+/* Stats wrapper: flat 6-column grid */
 .acct-stats-wrapper {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  align-items: stretch;
-}
-
-.acct-stats-xl {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  flex: none;
-  width: 42%;
-}
-
-.acct-stats-sm {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 1fr;
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
+  margin-bottom: 24px;
 }
+
+.acct-stats-xl { display: contents; }
+.acct-stats-sm { display: contents; }
 
 @media (max-width: 1300px) {
-  .acct-stats-wrapper { flex-direction: column; }
-  .acct-stats-xl { width: 100%; }
-  .acct-stats-sm { grid-template-columns: repeat(5, 1fr); }
+  .acct-stats-wrapper { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .acct-stats-wrapper { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 768px) {
-  .acct-stats-xl { grid-template-columns: 1fr; }
-  .acct-stats-sm { grid-template-columns: repeat(2, 1fr); }
+  .acct-stats-wrapper { grid-template-columns: repeat(2, 1fr); }
 }
 
 .acct-stat-card {
@@ -1581,19 +1566,11 @@ svg.lucide { display: block; }
   line-height: 1;
 }
 
-/* XL cards (Pajamos + Grynasis pelnas) */
-.acct-stats-xl .acct-stat-card {
-  padding: 28px 24px;
-  min-height: 140px;
-  justify-content: space-between;
-}
-.acct-stats-xl .acct-stat-card[data-key="income"] { background: var(--green-pastel); border-top: 3px solid var(--green); }
-.acct-stats-xl .acct-stat-card[data-key="profit"] { background: var(--blue-pastel);  border-top: 3px solid var(--blue); }
-.acct-stats-xl .acct-stat-value { font-size: 3.5rem; }
-
-/* SM cards (ROI, Užsakymai, Vid. užsakymas, Pelno marža, PVM) */
-.acct-stats-sm .acct-stat-card { min-height: 100px; padding: 18px 20px; }
-.acct-stats-sm .acct-stat-value { font-size: 1.8rem; }
+/* All cards equal - accent for income/profit */
+.acct-stat-card[data-key="income"] { background: var(--green-pastel); border-top: 3px solid var(--green); }
+.acct-stat-card[data-key="profit"] { background: var(--blue-pastel);  border-top: 3px solid var(--blue); }
+.acct-stat-value { font-size: clamp(1.2rem, 2vw, 2rem); }
+.acct-stat-change { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .acct-stat-sublabel {
   font-size: 9px;
@@ -1797,7 +1774,7 @@ svg.lucide { display: block; }
 /* 3-column middle row */
 .acct-row-middle {
   display: grid;
-  grid-template-columns: 40% 35% 25%;
+  grid-template-columns: 5fr 4fr 3fr;
   gap: 16px;
   margin-bottom: 20px;
   align-items: start;
@@ -3120,4 +3097,95 @@ svg.lucide { display: block; }
   background: #ffffff;
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0,0,0,0.14), 0 0 0 0.5px rgba(0,0,0,0.06);
+}
+
+/* ══════════════════════════════════════════════════════
+   Edit order button (pencil icon in orders table)
+══════════════════════════════════════════════════════ */
+.btn-edit-order {
+  background: none; border: none; cursor: pointer;
+  padding: 4px 5px; border-radius: 4px;
+  color: var(--text-muted);
+  transition: color 0.12s, background 0.12s;
+  display: inline-flex; align-items: center;
+  vertical-align: middle;
+}
+.btn-edit-order:hover { background: var(--blue-pastel); color: var(--blue); }
+
+/* ══════════════════════════════════════════════════════
+   Clients table — premium design (no grid lines)
+══════════════════════════════════════════════════════ */
+.cli-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.cli-table thead th {
+  padding: 10px 16px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-muted);
+  border-bottom: 1px solid #f0f0f0;
+  background: transparent;
+  text-align: left;
+}
+.cli-table thead th.text-right { text-align: right; }
+.cli-table tbody td {
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid #f0f0f0;
+  border-right: none; border-left: none;
+  vertical-align: middle;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.cli-table tbody tr:last-child td { border-bottom: none; }
+.cli-table tbody tr:hover td { background: #f8f8f8; }
+.client-row { cursor: pointer; }
+
+/* Avatar circle for client name */
+.cli-name-wrap {
+  display: flex; align-items: center; gap: 10px;
+}
+.cli-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #007aff22, #007aff44);
+  color: var(--blue);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+  letter-spacing: 0;
+}
+
+.cli-name    { font-weight: 500; font-size: 13.5px; }
+.cli-company { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.cli-spent   { font-weight: 700; color: var(--green-deep); }
+
+/* ══════════════════════════════════════════════════════
+   Invoice action icon buttons
+══════════════════════════════════════════════════════ */
+.inv-actions-cell { white-space: nowrap; }
+.inv-act-btn {
+  background: none; border: none; cursor: pointer;
+  padding: 5px 6px; border-radius: 6px;
+  color: var(--text-muted);
+  transition: color 0.12s, background 0.12s;
+  display: inline-flex; align-items: center;
+  vertical-align: middle;
+}
+.inv-act-btn:hover { background: var(--bg); color: var(--text); }
+.inv-act-btn.danger:hover { background: var(--red-pastel); color: var(--red); }
+
+.inv-table tbody tr:hover td { background: #f8f8f8; }
+
+/* ══════════════════════════════════════════════════════
+   Production card — clickable cursor
+══════════════════════════════════════════════════════ */
+.prod-card { cursor: pointer; }
+.prod-card:active { opacity: 0.85; }
+
+/* ══════════════════════════════════════════════════════
+   Kainodara custom size mode
+══════════════════════════════════════════════════════ */
+.kain-error {
+  color: var(--red);
+  padding: 16px;
+  font-size: 13px;
 }

@@ -1,165 +1,112 @@
-Build two new pages in mossbloom-crm:
+1. ORDERS DISAPPEARING ON SYNC
+   Critical bug. Orders vanish when sync is pressed.
+   Find the sync endpoint in server/routes/orders.js or sync service.
+   It likely does DELETE FROM orders_cache then re-inserts.
+   Fix to use INSERT OR REPLACE (upsert) by order_id+store_id.
+   Never delete existing orders during sync.
 
-## PAGE 1: SĄSKAITOS (Invoices) at /invoices
+2. B2B ORDER BUGS
+   a) B2B orders not showing in "Today" dashboard widget
+      The today query only checks orders_cache, not accounting_entries.
+      Fix: also check accounting_entries WHERE source='b2b' AND entry_date=today
+   b) B2B order description showing as email in orders list
+      When creating B2B order, description field is being used as customer_email.
+      Fix: use customer name as display name, not email field.
 
-Add to navigation under TOOLS section: "Sąskaitos" with receipt icon.
+3. GAMYBA - drag and drop broken, cards not clickable
+   Fix drag and drop: use proper HTML5 dragstart/dragover/drop events.
+   Add ondragstart to card, ondragover+ondrop to columns.
+   On drop: PATCH /api/production/:id {stage: newStage}
+   
+   Click on card opens edit modal:
+   - Edit product name, notes, due date
+   - Change stage dropdown
+   - Save button
 
-### DATABASE
-CREATE TABLE IF NOT EXISTS invoices (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  invoice_number TEXT UNIQUE,
-  series TEXT DEFAULT 'PAV',
-  issue_date TEXT,
-  due_date TEXT,
-  seller_name TEXT DEFAULT 'MB Sydzei',
-  seller_code TEXT DEFAULT '306918032',
-  seller_vat TEXT DEFAULT 'LT100017928619',
-  seller_address TEXT DEFAULT 'Draugystės 1-takas 8, Raseiniai',
-  seller_phone TEXT DEFAULT '+3706 31 333 13',
-  seller_email TEXT DEFAULT 'info@bloom.lt',
-  seller_bank TEXT DEFAULT 'Revolut',
-  seller_iban TEXT DEFAULT 'LT353250018909471506',
-  seller_signee TEXT DEFAULT 'Simonas Jovaišas',
-  buyer_name TEXT,
-  buyer_code TEXT,
-  buyer_vat TEXT,
-  buyer_address TEXT,
-  line_items TEXT,
-  subtotal REAL,
-  vat_amount REAL,
-  total REAL,
-  order_id TEXT,
-  store_id TEXT,
-  status TEXT DEFAULT 'draft',
-  created_at TEXT DEFAULT (datetime('now'))
-)
+4. KLIENTAI - country not showing
+   The billing country is inside the data JSON column.
+   Fix import query:
+   JSON.parse(row.data).billing?.country OR JSON.parse(row.data).billing_country
+   Run UPDATE to fix existing clients:
+   Re-import all clients from orders_cache re-parsing country from data column.
+   
+   Also fix table design - make it look premium not Excel:
+   - Remove all borders between columns
+   - Only bottom border per row (1px #f0f0f0)
+   - More row height (48px)
+   - Hover: entire row background #f8f8f8
+   - Name column: show avatar circle with initials (like Linear/Notion)
+   - Country: flag emoji + country name (LT->🇱🇹 Lietuva, DK->🇩🇰 Danija)
+   - Amounts: right-aligned, bold green
+   - Remove visible column grid lines entirely
 
-Invoice number format: PAV + YYYYMMDD + '-' + sequence
-Example: PAV20260520-01, PAV20260520-02
-Auto-increment sequence per day.
+5. SĄSKAITOS page improvements
+   - Veiksmai: replace text with icon buttons only
+     👁 view (eye icon) | ⬇ download (download icon) | ✓ mark paid (check icon) | 🗑 delete
+     All small (16px), gray, hover darkens
+   - Table rows: hover effect = full row background #f8f8f8
+   - After creating invoice, auto-add buyer to clients table if not exists
 
-### INVOICES LIST PAGE
-- Table showing all invoices: Nr | Data | Pirkėjas | Suma | Statusas | Actions
-- Status badges: Juodraštis (draft), Išsiųsta (sent), Apmokėta (paid)
-- Actions: View PDF | Download | Mark as paid | Delete
-- "+ Nauja sąskaita" button top right
-- Filter by status, date range
+6. KAINODARA - add custom size calculator
+   Below the product dropdown, add toggle: "Produktas" | "Pasirinktinis"
+   
+   Custom mode shows:
+   - Shape: Apvalus (round) | Stačiakampis (rectangle)
+   - Size: diameter input (for round) OR width x height (for rectangle)
+   - Moss type: Kupstinės | Mix
+   - Calculate button
+   
+   Calculation formula (from Excel):
+   Round area = π * (diameter/2)² 
+   Rectangle area = width * height
+   
+   Moss cost per m²:
+   - Kupstinės (pole5): €199.20/m² (box €249*0.8, covers 1.25m²)
+   - Mix: pole2 + flat + reindeer + amaranthus proportional
+   
+   Frame cost: use nearest standard size price or input custom
+   
+   Show: Savikaina | Rekomenduojama kaina (cost * 2.5) | Marža
 
-### CREATE INVOICE PAGE/MODAL
-Full form matching the PDF template exactly:
+7. DASHBOARD FIXES
+   a) Remove scrollbar: html,body{overflow-x:hidden} ::-webkit-scrollbar{display:none}
+   
+   b) Fix grid symmetry - use CSS grid throughout:
+   Top KPI row: 6 equal cards in one row
+   grid-template-columns: repeat(6, 1fr)
+   Cards: hero cards (Pajamos, Pelnas) same size as others, just different accent color
+   
+   c) Add 6th KPI card: "Šaltiniai" or "Aktyvūs sandoriai" (pipeline value)
+   
+   d) Second row: equal 3 columns
+   grid-template-columns: 5fr 4fr 3fr
+   
+   e) Third row: equal 4 columns  
+   grid-template-columns: repeat(4, 1fr)
+   
+   f) Fix text overlap on smaller screens:
+   KPI values: clamp(1.2rem, 2vw, 2rem)
+   Change text: font-size 11px, single line, no wrap
+   
+   g) Fix month-to-date comparison:
+   Instead of comparing full last month vs full this month,
+   compare: last month days 1-10 vs this month days 1-10
+   const today = new Date().getDate()
+   prevFrom = first day of last month
+   prevTo = day X of last month (same day number as today)
+   
+   h) Right side alignment: all cards in right column must be same width
 
-SELLER section (pre-filled, editable):
-- Įmonės pavadinimas: MB Sydzei
-- Įmonės kodas: 306918032
-- PVM kodas: LT100017928619
-- Adresas: Draugystės 1-takas 8, Raseiniai
-- Tel: +3706 31 333 13
-- El. paštas: info@bloom.lt
-- Bankas: Revolut
-- IBAN: LT353250018909471506
+8. EDIT ORDERS
+   Add edit button to each order row (pencil icon).
+   Opens slide panel with editable fields:
+   - Status (dropdown)
+   - Notes
+   - For B2B: customer name, amount, description
+   - Save button -> PATCH /api/orders/:id
 
-BUYER section:
-- Search/select existing client (autocomplete from clients table)
-- OR fill manually:
-  - Įmonės pavadinimas
-  - Įmonės kodas
-  - PVM kodas
-  - Adresas
-- When client selected, auto-fill all fields
-- "Išsaugoti kaip naują klientą" checkbox
-
-LINE ITEMS (up to 10 rows, like the PDF):
-Each row: Nr | Prekės pavadinimas | Mato vnt | Kiekis | Kaina be PVM | Suma be PVM
-- Product name: dropdown from products table OR free text
-- When product selected from dropdown, auto-fill price (sell_price_eur / 1.21)
-- Unit: default "vnt."
-- Quantity: number
-- Price excl VAT: editable
-- Row total: auto-calculated
-- Add row button, remove row button
-
-TOTALS (auto-calculated):
-- Iš viso (excl VAT)
-- PVM 21%
-- Viso su PVM
-
-BOTTOM:
-- Sąskaitą išrašė: Simonas Jovaišas (editable)
-- Issue date (default today)
-- Due date (default +14 days)
-
-### PDF GENERATION
-Use html-pdf or puppeteer to generate PDF matching the exact layout:
-npm install html-pdf-node
-
-PDF template should match the uploaded invoice exactly:
-- "PVM SĄSKAITA FAKTŪRA" bold header
-- "Serija PAV Nr. XXXXXXXX" 
-- Date in Lithuanian format: "2026 m. gegužės 20 d."
-- Two column table: Pardavėjo rekvizitai | Pirkėjo rekvizitai
-- Line items table with borders
-- Totals table bottom right
-- Signature lines at bottom
-
-POST /api/invoices - create invoice
-GET /api/invoices - list invoices
-GET /api/invoices/:id/pdf - generate and download PDF
-PATCH /api/invoices/:id - update status
-DELETE /api/invoices/:id - delete
-
-## PAGE 2: KLIENTAI (Clients) at /clients
-
-Add to navigation under COMMERCE section between Orders and Gamyba.
-
-### DATABASE
-CREATE TABLE IF NOT EXISTS clients (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT DEFAULT 'b2c',
-  name TEXT,
-  company TEXT,
-  email TEXT,
-  phone TEXT,
-  address TEXT,
-  country TEXT,
-  company_code TEXT,
-  vat_code TEXT,
-  notes TEXT,
-  source TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
-)
-
-### AUTO-IMPORT on startup
-Pull all unique customers from orders_cache:
-- B2B: source='b2b' entries from accounting_entries -> type='b2b'
-- WooCommerce: billing_email, customer_name from orders_cache -> type='b2c'
-- Deduplicate by email
-- Set country from billing_country
-
-### CLIENTS LIST PAGE
-Top stats: Total clients | B2B clients | B2C clients | Countries
-
-FILTER BAR:
-- Toggle: Visi | B2B | B2C
-- Search by name/email/company
-- Filter by country
-
-TABLE columns:
-- Type badge (B2B purple / B2C gray)
-- Name / Company
-- Email
-- Country flag + name
-- Orders count (from orders_cache)
-- Total spent (sum of their orders in EUR)
-- Last order date
-- Actions: View | Edit | Create Invoice
-
-CLICK client -> slide panel showing:
-- Contact details (editable)
-- Order history (last 10 orders)
-- Total spent
-- Notes field
-- "Sukurti sąskaitą" button
-
-### DESIGN
-Same macOS light theme as rest of app.
-Clean table, same styling as Products/Orders pages.
+9. INVOICE -> CLIENT AUTO-SAVE
+   When invoice is created with buyer details filled:
+   Check if client exists by company name or VAT code
+   If not: INSERT into clients table automatically
+   Show toast: "Klientas išsaugotas"

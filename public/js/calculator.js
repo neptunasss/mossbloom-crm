@@ -2,6 +2,7 @@
 
 let kainStore    = 'LT';
 let kainProducts = [];
+let kainMode     = 'product';
 
 async function initCalculator() {
   // Use products already loaded by products.js, or fetch fresh
@@ -19,6 +20,8 @@ async function initCalculator() {
   }
   populateKainSelector();
   kainRecalc();
+  // Init mode to product
+  setKainMode('product');
 }
 
 function setKainStore(store) {
@@ -122,3 +125,63 @@ function kainAddToB2b() {
 
 function p1(n) { return (Math.round((n || 0) * 10)  / 10).toFixed(1); }
 function p2(n) { return (Math.round((n || 0) * 100) / 100).toFixed(2); }
+
+// ── Custom size calculator ────────────────────────────────────────────────────
+
+function setKainMode(mode) {
+  kainMode = mode;
+  document.querySelectorAll('.kain-mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode)
+  );
+  document.getElementById('kain-product-section').hidden  = mode !== 'product';
+  document.getElementById('kain-custom-section').hidden   = mode !== 'custom';
+  if (mode === 'product') kainRecalc();
+}
+
+function kainCustomShapeChange() {
+  const shape = document.getElementById('kain-shape').value;
+  document.getElementById('kain-size-round').hidden = shape !== 'round';
+  document.getElementById('kain-size-rect').hidden  = shape !== 'rect';
+  document.getElementById('kain-shape-round').classList.toggle('active', shape === 'round');
+  document.getElementById('kain-shape-rect').classList.toggle('active', shape === 'rect');
+}
+
+function calcCustomSize() {
+  const shape    = document.getElementById('kain-shape').value;
+  const mossType = document.getElementById('kain-moss-type').value;
+  const results  = document.getElementById('kain-results');
+
+  let areaSqm;
+  if (shape === 'round') {
+    const d = parseFloat(document.getElementById('kain-diam').value);
+    if (!d || d <= 0) { results.innerHTML = '<div class="kain-error">Įveskite skersmenį</div>'; return; }
+    areaSqm = Math.PI * Math.pow(d / 200, 2); // cm → m
+  } else {
+    const w = parseFloat(document.getElementById('kain-width').value);
+    const h = parseFloat(document.getElementById('kain-height').value);
+    if (!w || !h || w <= 0 || h <= 0) { results.innerHTML = '<div class="kain-error">Įveskite matmenis</div>'; return; }
+    areaSqm = (w / 100) * (h / 100);
+  }
+
+  // Moss cost per m²: Kupstinės (pole5) = €199.20/m², Mix ≈ €160/m²
+  const mossCostPerSqm = mossType === 'kupstines' ? 199.20 : 160.00;
+  const mossCost = areaSqm * mossCostPerSqm;
+
+  // Recommended price = cost * 2.5
+  const recommendedPrice = mossCost * 2.5;
+  const margin = ((recommendedPrice - mossCost) / recommendedPrice) * 100;
+
+  const mossLabel = mossType === 'kupstines' ? 'Kupstinės' : 'Mix';
+  const shapeLabel = shape === 'round' ? 'Apvalus' : 'Stačiakampis';
+
+  results.innerHTML = `
+    <div class="kain-result-card">
+      <div class="kain-result-title">${shapeLabel} · ${mossLabel}</div>
+      <div class="kain-result-row"><div class="kain-result-lbl">Plotas</div><div class="kain-result-val">${(areaSqm).toFixed(4)} m²</div></div>
+      <div class="kain-result-row"><div class="kain-result-lbl">Samanų kaina (${p2(mossCostPerSqm)} €/m²)</div><div class="kain-result-val">€${p2(mossCost)}</div></div>
+      <div class="kain-result-divider"></div>
+      <div class="kain-result-row"><div class="kain-result-lbl">Savikaina</div><div class="kain-result-val">€${p2(mossCost)}</div></div>
+      <div class="kain-result-row"><div class="kain-result-lbl">Rekomenduojama kaina (×2.5)</div><div class="kain-result-val" style="color:var(--blue)">€${p2(recommendedPrice)}</div></div>
+      <div class="kain-result-row"><div class="kain-result-lbl">Marža</div><div class="kain-result-val" style="color:var(--green-deep)">${p1(margin)}%</div></div>
+    </div>`;
+}

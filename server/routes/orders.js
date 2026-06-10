@@ -349,6 +349,39 @@ router.put('/:storeId/:orderId/source', requireAuth, (req, res) => {
   }
 });
 
+// Edit order fields
+router.patch('/:storeId/:orderId', requireAuth, (req, res) => {
+  const { storeId, orderId } = req.params;
+  const { status, notes, customer_name, amount, description } = req.body;
+
+  try {
+    if (storeId === 'b2b') {
+      if (!String(orderId).startsWith('ae-')) {
+        const fields = [];
+        const vals   = [];
+        if (customer_name !== undefined) { fields.push('customer_name = ?'); vals.push(customer_name); }
+        if (amount       !== undefined) { fields.push('amount = ?');        vals.push(parseFloat(amount)); }
+        if (description  !== undefined) { fields.push('description = ?');   vals.push(description); }
+        if (fields.length) {
+          vals.push(parseInt(orderId));
+          db.prepare(`UPDATE b2b_orders SET ${fields.join(', ')} WHERE id = ?`).run(...vals);
+        }
+      }
+    } else {
+      const fields = [];
+      const vals   = [];
+      if (status !== undefined) { fields.push('status = ?'); vals.push(status); }
+      if (fields.length) {
+        vals.push(storeId, parseInt(orderId));
+        db.prepare(`UPDATE orders_cache SET ${fields.join(', ')} WHERE store_id = ? AND order_id = ?`).run(...vals);
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Delete order — WC: soft-delete (hidden=1); B2B: hard-delete
 router.delete('/:storeId/:orderId', requireAuth, (req, res) => {
   const { storeId, orderId } = req.params;

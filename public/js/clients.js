@@ -65,16 +65,23 @@ function renderClientsTable() {
       : `<span class="client-type-pill b2c">B2C</span>`;
     const spent = c.total_spent > 0 ? `€${Math.round(c.total_spent).toLocaleString('lt-LT')}` : '—';
     const lastOrder = c.last_order ? new Date(c.last_order).toLocaleDateString('lt-LT') : '—';
+    const initials = (c.name || '?').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    const countryDisplay = c.country ? `${flag || ''} ${esc(COUNTRY_NAMES[c.country] || c.country)}`.trim() : '—';
     return `<tr class="client-row" onclick="openClientPanel(${c.id})">
       <td>${typePill}</td>
       <td>
-        <div class="cli-name">${esc(c.name || '—')}</div>
-        ${c.company ? `<div class="cli-company">${esc(c.company)}</div>` : ''}
+        <div class="cli-name-wrap">
+          <div class="cli-avatar">${initials}</div>
+          <div>
+            <div class="cli-name">${esc(c.name || '—')}</div>
+            ${c.company ? `<div class="cli-company">${esc(c.company)}</div>` : ''}
+          </div>
+        </div>
       </td>
       <td class="col-email">${esc(c.email || '—')}</td>
-      <td>${flag ? `${flag} ${esc(COUNTRY_NAMES[c.country] || c.country)}` : '—'}</td>
+      <td>${countryDisplay}</td>
       <td class="text-right">${c.order_count}</td>
-      <td class="text-right">${spent}</td>
+      <td class="text-right cli-spent">${spent}</td>
       <td>${lastOrder}</td>
       <td class="text-right" onclick="event.stopPropagation()">
         <div class="dot-menu-wrap">

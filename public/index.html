@@ -610,20 +610,63 @@
               </div>
             </div>
             <div class="kain-section">
-              <label class="kain-label">Produktas</label>
-              <select id="kain-product" class="kain-select" onchange="kainRecalc()">
-                <option value="">Kraunama…</option>
-              </select>
+              <label class="kain-label">Režimas</label>
+              <div class="toggle-group">
+                <button class="toggle-btn active kain-mode-btn" data-mode="product" onclick="setKainMode('product')">Produktas</button>
+                <button class="toggle-btn kain-mode-btn" data-mode="custom" onclick="setKainMode('custom')">Pasirinktinis</button>
+              </div>
             </div>
-            <div class="kain-section">
-              <label class="kain-label">Kiekis</label>
-              <input type="number" id="kain-qty" class="kain-input" value="1" min="1" max="999" oninput="kainRecalc()">
+
+            <!-- Standard product section -->
+            <div id="kain-product-section">
+              <div class="kain-section">
+                <label class="kain-label">Produktas</label>
+                <select id="kain-product" class="kain-select" onchange="kainRecalc()">
+                  <option value="">Kraunama…</option>
+                </select>
+              </div>
+              <div class="kain-section">
+                <label class="kain-label">Kiekis</label>
+                <input type="number" id="kain-qty" class="kain-input" value="1" min="1" max="999" oninput="kainRecalc()">
+              </div>
+              <div class="kain-section">
+                <label class="kain-label">Kaina (€, redaguojama)</label>
+                <input type="number" id="kain-custom-price" class="kain-input" placeholder="Katalogo kaina" step="0.01" oninput="kainRecalc()">
+              </div>
+              <button class="btn-primary" style="width:100%;margin-top:4px" onclick="kainAddToB2b()">Pridėti į B2B užsakymą</button>
             </div>
-            <div class="kain-section">
-              <label class="kain-label">Kaina (€, redaguojama)</label>
-              <input type="number" id="kain-custom-price" class="kain-input" placeholder="Katalogo kaina" step="0.01" oninput="kainRecalc()">
+
+            <!-- Custom size section -->
+            <div id="kain-custom-section" hidden>
+              <div class="kain-section">
+                <label class="kain-label">Forma</label>
+                <div class="toggle-group">
+                  <button class="toggle-btn active" id="kain-shape-round" onclick="document.getElementById('kain-shape').value='round';kainCustomShapeChange()">Apvalus</button>
+                  <button class="toggle-btn" id="kain-shape-rect" onclick="document.getElementById('kain-shape').value='rect';kainCustomShapeChange()">Stačiakampis</button>
+                </div>
+                <input type="hidden" id="kain-shape" value="round">
+              </div>
+              <div id="kain-size-round" class="kain-section">
+                <label class="kain-label">Skersmuo (cm)</label>
+                <input type="number" id="kain-diam" class="kain-input" placeholder="pvz. 60" min="1">
+              </div>
+              <div id="kain-size-rect" class="kain-section" hidden>
+                <label class="kain-label">Plotis × Aukštis (cm)</label>
+                <div style="display:flex;gap:8px">
+                  <input type="number" id="kain-width" class="kain-input" placeholder="Plotis">
+                  <span style="align-self:center;color:var(--text-muted)">×</span>
+                  <input type="number" id="kain-height" class="kain-input" placeholder="Aukštis">
+                </div>
+              </div>
+              <div class="kain-section">
+                <label class="kain-label">Samanų tipas</label>
+                <select id="kain-moss-type" class="kain-select">
+                  <option value="kupstines">Kupstinės</option>
+                  <option value="mix">Mix</option>
+                </select>
+              </div>
+              <button class="btn-primary" style="width:100%;margin-top:4px" onclick="calcCustomSize()">Skaičiuoti</button>
             </div>
-            <button class="btn-primary" style="width:100%;margin-top:4px" onclick="kainAddToB2b()">Pridėti į B2B užsakymą</button>
           </div>
 
           <!-- Results -->
@@ -1241,6 +1284,91 @@
       <button class="btn-secondary" onclick="closeSfModal()">Atšaukti</button>
       <button class="btn-primary" onclick="generateSf()">Generuoti SF →</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Production card edit modal ── -->
+<div id="prod-edit-modal" class="modal-overlay" hidden>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Redaguoti kortelę</h3>
+      <button class="btn-icon" onclick="closeProdEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Produkto pavadinimas</label>
+        <input type="text" id="pe-name">
+      </div>
+      <div class="form-group">
+        <label>Pastabos</label>
+        <textarea id="pe-notes" rows="3"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Terminas</label>
+          <input type="date" id="pe-due">
+        </div>
+        <div class="form-group">
+          <label>Etapas</label>
+          <select id="pe-stage">
+            <option value="gauta">Gauta</option>
+            <option value="gaminama">Gaminama</option>
+            <option value="paruosta">Paruošta</option>
+            <option value="issista">Išsiųsta</option>
+            <option value="pristatyta">Pristatyta</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeProdEditModal()">Atšaukti</button>
+      <button class="btn-primary" onclick="saveProdEdit()">Išsaugoti</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Order Slide Panel ── -->
+<div id="edit-order-overlay" class="customer-overlay" onclick="closeEditOrder()"></div>
+<div id="edit-order-panel" class="customer-panel">
+  <div class="panel-header">
+    <div>
+      <h3 style="font-size:15px;font-weight:600">Redaguoti užsakymą</h3>
+    </div>
+    <button class="btn-icon" onclick="closeEditOrder()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="panel-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+    <div class="form-group" id="eo-status-row">
+      <label>Statusas</label>
+      <select id="eo-status" class="filter-select" style="width:100%">
+        <option value="pending">Pending</option>
+        <option value="processing">Processing</option>
+        <option value="on-hold">On Hold</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="refunded">Refunded</option>
+      </select>
+    </div>
+    <div id="eo-b2b-fields" hidden>
+      <div class="form-group">
+        <label>Kliento vardas</label>
+        <input type="text" id="eo-name" class="search-input" style="width:100%;padding-left:10px">
+      </div>
+      <div class="form-group">
+        <label>Suma (EUR)</label>
+        <input type="number" id="eo-amount" class="search-input" style="width:100%;padding-left:10px" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>Aprašymas</label>
+        <input type="text" id="eo-desc" class="search-input" style="width:100%;padding-left:10px">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Pastabos (neišsaugomos šiuo metu)</label>
+      <textarea id="eo-notes" rows="3" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:14px;resize:vertical"></textarea>
+    </div>
+    <button class="btn-primary" style="width:100%" onclick="saveEditOrder()">Išsaugoti</button>
   </div>
 </div>
 

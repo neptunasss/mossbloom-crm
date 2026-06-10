@@ -444,7 +444,18 @@ function statBlock(current, previous, sparkline) {
 
 async function buildDashboard(db, query) {
   const period     = resolvePeriod(query);
-  const prev       = previousPeriod(period.from, period.to);
+  // For this_month: compare days 1-today vs same days last month
+  let prev;
+  if (period.preset === 'this_month') {
+    const now2      = new Date();
+    const dayN      = now2.getDate();
+    const prevMoStart = new Date(now2.getFullYear(), now2.getMonth() - 1, 1);
+    const prevMoEnd   = new Date(now2.getFullYear(), now2.getMonth(), 0);
+    const prevMoDay   = new Date(prevMoStart.getFullYear(), prevMoStart.getMonth(), Math.min(dayN, prevMoEnd.getDate()));
+    prev = { from: toDateStr(prevMoStart), to: toDateStr(prevMoDay) };
+  } else {
+    prev = previousPeriod(period.from, period.to);
+  }
   const rate       = await fx.getDkkPerEur();
 
   const fetchEntries = (from, to) => db.prepare(`
@@ -684,14 +695,19 @@ async function buildTodayData(db) {
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthStr  = `${lastMonthDate.getFullYear()}-${pad(lastMonthDate.getMonth() + 1)}`;
 
-  // Today's orders
+  // Today's orders (WC + B2B)
   const todayRows = db.prepare(`
     SELECT total, currency FROM orders_cache
     WHERE substr(date_created,1,10) = ?
       AND status NOT IN ('cancelled','refunded','failed')
   `).all(today);
-  const todayOrders  = todayRows.length;
-  const todayRevenue = todayRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0);
+  const b2bTodayRows = db.prepare(`
+    SELECT amount, currency FROM accounting_entries
+    WHERE source IN ('b2b','b2b_import') AND type='income' AND entry_date = ?
+  `).all(today);
+  const todayOrders  = todayRows.length + b2bTodayRows.length;
+  const todayRevenue = todayRows.reduce((s, r) => s + fx.toEur(parseFloat(r.total) || 0, r.currency, rate), 0)
+    + b2bTodayRows.reduce((s, r) => s + fx.toEur(parseFloat(r.amount) || 0, r.currency, rate), 0);
 
   const alerts = [];
 
@@ -713,11 +729,13 @@ async function buildTodayData(db) {
     }
   }
 
-  // b) Top performer — store with highest % growth this month vs last month
+  // b) Top performer — compare days 1-N this month vs days 1-N last month (same day number)
+  const dayOfMonth = now.getDate();
+  const lastMonthSameDayStr = `${lastMonthStr}-${pad(Math.min(dayOfMonth, new Date(lastMonthDate.getFullYear(), lastMonthDate.getMonth() + 1, 0).getDate()))}`;
   const storeGrowth = [];
   for (const sid of WC_STORES) {
     const thisRev = wcIncomeFromCache(db, sid, `${thisMonth}-01`, today, rate);
-    const lastRev = wcIncomeFromCache(db, sid, `${lastMonthStr}-01`, `${lastMonthStr}-31`, rate);
+    const lastRev = wcIncomeFromCache(db, sid, `${lastMonthStr}-01`, lastMonthSameDayStr, rate);
     if (lastRev > 0 && thisRev > 0) {
       storeGrowth.push({ sid, pct: ((thisRev - lastRev) / lastRev) * 100 });
     }

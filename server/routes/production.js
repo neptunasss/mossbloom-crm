@@ -28,9 +28,9 @@ router.get('/', requireAuth, (req, res) => {
   res.json({ stages: grouped });
 });
 
-// PATCH /api/production/:id — update stage and/or notes
+// PATCH /api/production/:id — update stage, notes, product_name, due_date
 router.patch('/:id', requireAuth, (req, res) => {
-  const { stage, notes } = req.body;
+  const { stage, notes, product_name, due_date } = req.body;
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(400).json({ error: 'invalid id' });
 
@@ -43,8 +43,10 @@ router.patch('/:id', requireAuth, (req, res) => {
 
   const fields = [];
   const vals   = [];
-  if (stage !== undefined) { fields.push('stage = ?');  vals.push(stage); }
-  if (notes !== undefined) { fields.push('notes = ?');  vals.push(notes); }
+  if (stage        !== undefined) { fields.push('stage = ?');        vals.push(stage); }
+  if (notes        !== undefined) { fields.push('notes = ?');        vals.push(notes); }
+  if (product_name !== undefined) { fields.push('product_name = ?'); vals.push(product_name); }
+  if (due_date     !== undefined) { fields.push('due_date = ?');     vals.push(due_date); }
   if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
 
   fields.push("updated_at = datetime('now')");

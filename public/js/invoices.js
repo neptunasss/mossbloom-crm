@@ -65,16 +65,19 @@ function renderInvoicesList() {
       <td>${esc(inv.buyer_name || '—')}</td>
       <td class="text-right">€${Number(inv.total||0).toFixed(2)}</td>
       <td><span class="status-badge" style="background:${st.bg};color:${st.text}">${st.label}</span></td>
-      <td class="text-right" onclick="event.stopPropagation()">
-        <div class="dot-menu-wrap">
-          <button class="btn-dots" onclick="toggleDotMenu(this)">···</button>
-          <div class="dot-menu">
-            <div class="dot-menu-item" onclick="viewInvoiceHtml(${inv.id})">Peržiūrėti</div>
-            <div class="dot-menu-item" onclick="downloadInvoicePdf(${inv.id},'${esc(inv.invoice_number)}')">Atsisiųsti PDF</div>
-            ${inv.status !== 'paid' ? `<div class="dot-menu-item" onclick="markInvoicePaid(${inv.id})">Pažymėti apmokėta</div>` : ''}
-            <div class="dot-menu-item danger" onclick="deleteInvoice(${inv.id})">Ištrinti</div>
-          </div>
-        </div>
+      <td class="text-right inv-actions-cell" onclick="event.stopPropagation()">
+        <button class="inv-act-btn" onclick="viewInvoiceHtml(${inv.id})" title="Peržiūrėti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="inv-act-btn" onclick="downloadInvoicePdf(${inv.id},'${esc(inv.invoice_number)}')" title="Atsisiųsti PDF">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        ${inv.status !== 'paid' ? `<button class="inv-act-btn" onclick="markInvoicePaid(${inv.id})" title="Pažymėti apmokėta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>` : ''}
+        <button class="inv-act-btn danger" onclick="deleteInvoice(${inv.id})" title="Ištrinti">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -344,11 +347,12 @@ async function saveInvoice() {
   };
 
   try {
-    const { id } = await api('/api/invoices', { method: 'POST', body: JSON.stringify(data) });
+    const result = await api('/api/invoices', { method: 'POST', body: JSON.stringify(data) });
     toast('Sąskaita sukurta');
+    if (result.client_saved) setTimeout(() => toast('Klientas išsaugotas'), 800);
     switchView('invoices');
     await loadInvoices();
-    viewInvoiceHtml(id);
+    viewInvoiceHtml(result.id);
   } catch (err) {
     toast('Klaida: ' + err.message, 'error');
   }

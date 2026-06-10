@@ -26,7 +26,7 @@ function importClientsFromOrders() {
     let country = '';
     try {
       const order = JSON.parse(row.data);
-      country = order.billing?.country || '';
+      country = order.billing?.country || order.billing_country || '';
     } catch {}
     if (seen.has(row.customer_email)) {
       // Still try to fill missing country for existing records

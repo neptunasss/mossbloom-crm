@@ -38,7 +38,7 @@ async function loadProduction() {
     const data = await api('/api/production');
     renderProduction(data.stages);
   } catch (e) {
-    showToast('Klaida kraunant gamybą', 'error');
+    toast('Klaida kraunant gamybą', 'error');
   } finally {
     setLoading(false);
   }
@@ -74,6 +74,10 @@ function renderProduction(stages) {
       card.addEventListener('dragend', () => {
         card.classList.remove('dragging');
         prodDragging = null;
+      });
+      card.addEventListener('click', e => {
+        if (e.target.closest('select, textarea, .prod-notes, .prod-card-drag-handle')) return;
+        openProdEditModal(parseInt(card.dataset.id, 10));
       });
     });
 
@@ -168,10 +172,10 @@ document.addEventListener('dragover', e => {
 
 async function moveProdCard(id, stage) {
   try {
-    await api(`/api/production/${id}`, { method: 'PATCH', body: { stage } });
+    await api(`/api/production/${id}`, { method: 'PATCH', body: JSON.stringify({ stage }) });
     loadProduction();
   } catch {
-    showToast('Klaida keičiant etapą', 'error');
+    toast('Klaida keičiant etapą', 'error');
   }
 }
 
@@ -191,9 +195,9 @@ async function saveNote(id, notes, el) {
   el.dataset.noteVal = notes;
   el.innerHTML = notes ? escHtml(notes) : '<span class="prod-notes-placeholder">Pastabos…</span>';
   try {
-    await api(`/api/production/${id}`, { method: 'PATCH', body: { notes } });
+    await api(`/api/production/${id}`, { method: 'PATCH', body: JSON.stringify({ notes }) });
   } catch {
-    showToast('Klaida išsaugant pastabas', 'error');
+    toast('Klaida išsaugant pastabas', 'error');
   }
 }
 
@@ -252,3 +256,54 @@ function updateProdMobileView() {
 }
 
 window.addEventListener('resize', updateProdMobileView);
+
+// ── Production card edit modal ────────────────────────────────────────────────
+
+let _prodEditId = null;
+let _prodAllCards = {};
+
+function openProdEditModal(id) {
+  // Find card data from rendered state
+  let card = null;
+  document.querySelectorAll('.prod-card').forEach(el => {
+    if (parseInt(el.dataset.id, 10) === id) card = el;
+  });
+  if (!card) return;
+
+  _prodEditId = id;
+
+  const name    = card.querySelector('.prod-card-name')?.textContent || '';
+  const notesEl = card.querySelector('.prod-notes');
+  const notes   = notesEl?.dataset.noteVal || (notesEl?.textContent || '').replace('Pastabos…', '').trim();
+  const dueDate = card.querySelector('.prod-card-due-date')?.textContent || '';
+  const stage   = card.dataset.stage || 'gauta';
+
+  document.getElementById('pe-name').value    = name;
+  document.getElementById('pe-notes').value   = notes;
+  document.getElementById('pe-due').value     = dueDate;
+  document.getElementById('pe-stage').value   = stage;
+  document.getElementById('prod-edit-modal').hidden = false;
+}
+
+function closeProdEditModal() {
+  document.getElementById('prod-edit-modal').hidden = true;
+  _prodEditId = null;
+}
+
+async function saveProdEdit() {
+  if (!_prodEditId) return;
+  const data = {
+    product_name: document.getElementById('pe-name').value.trim(),
+    notes:        document.getElementById('pe-notes').value.trim(),
+    due_date:     document.getElementById('pe-due').value,
+    stage:        document.getElementById('pe-stage').value,
+  };
+  try {
+    await api(`/api/production/${_prodEditId}`, { method: 'PATCH', body: JSON.stringify(data) });
+    closeProdEditModal();
+    loadProduction();
+    toast('Išsaugota');
+  } catch {
+    toast('Klaida išsaugant', 'error');
+  }
+}

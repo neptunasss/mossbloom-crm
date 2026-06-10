@@ -218,7 +218,25 @@ router.post('/', requireAuth, (req, res) => {
     JSON.stringify(items), subtotal, vatAmount, total, order_id || '', store_id || ''
   );
 
-  res.status(201).json({ id: result.lastInsertRowid, invoice_number: invNum });
+  // Auto-save buyer as client if not already exists
+  if (buyer_name) {
+    try {
+      const existing = db.prepare(
+        `SELECT id FROM clients WHERE name = ? OR company = ?
+         OR (buyer_vat != '' AND vat_code = ?)
+         OR (buyer_code != '' AND company_code = ?)
+         LIMIT 1`
+      ).get(buyer_name, buyer_name, buyer_vat || '__none__', buyer_code || '__none__');
+      if (!existing) {
+        db.prepare(
+          `INSERT INTO clients (name, company, vat_code, company_code, address, type, source)
+           VALUES (?, ?, ?, ?, ?, 'b2b', 'invoice')`
+        ).run(buyer_name, buyer_name, buyer_vat || '', buyer_code || '', buyer_address || '');
+      }
+    } catch {}
+  }
+
+  res.status(201).json({ id: result.lastInsertRowid, invoice_number: invNum, client_saved: !!buyer_name });
 });
 
 // GET /api/invoices/:id/html — printable HTML
