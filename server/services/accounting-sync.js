@@ -2,6 +2,9 @@
 
 const db = require('../database');
 
+// Sources that must never be touched by any sync operation
+const PROTECTED_SOURCES = ['b2b', 'b2b_import', 'manual'];
+
 /** Promote orders_cache + won deals into accounting_entries (idempotent). */
 function syncAccountingEntries() {
   const wc = { added: 0, skipped: 0 };

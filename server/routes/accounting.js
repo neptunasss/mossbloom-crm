@@ -258,8 +258,14 @@ router.post('/', requireAuth, (req, res) => {
 
 router.delete('/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id);
-  if (!db.prepare('SELECT id FROM accounting_entries WHERE id=?').get(id)) {
+  const entry = db.prepare('SELECT id, source FROM accounting_entries WHERE id=?').get(id);
+  if (!entry) {
     return res.status(404).json({ error: 'Įrašas nerastas' });
+  }
+  // B2B and b2b_import entries must be deleted via the Orders page (DELETE /api/orders/b2b/:id)
+  // to keep b2b_orders table in sync. Block deletion here to prevent accidental data loss.
+  if (entry.source === 'b2b' || entry.source === 'b2b_import') {
+    return res.status(403).json({ error: 'B2B įrašai trinami per užsakymų puslapį' });
   }
   db.prepare('DELETE FROM accounting_entries WHERE id=?').run(id);
   res.json({ success: true });

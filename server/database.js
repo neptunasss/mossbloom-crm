@@ -243,11 +243,12 @@ try {
 try { db.exec('ALTER TABLE products ADD COLUMN lt_name TEXT'); } catch {}
 try { db.exec('ALTER TABLE products ADD COLUMN dk_name TEXT'); } catch {}
 
-// Invoices — migrate old schema to new if needed
+// Invoices — safe schema migration (NEVER drop — add missing columns instead)
 try {
   const invCols = db.prepare('PRAGMA table_info(invoices)').all().map(c => c.name);
   if (invCols.length > 0 && !invCols.includes('series')) {
-    db.exec('DROP TABLE invoices');
+    db.exec("ALTER TABLE invoices ADD COLUMN series TEXT DEFAULT 'PAV'");
+    console.log('[db] invoices: migrated — added series column');
   }
 } catch {}
 try {
