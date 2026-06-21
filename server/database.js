@@ -131,6 +131,21 @@ try { db.exec("UPDATE accounting_entries SET category='Paslaugos' WHERE type='ex
 try { db.exec("UPDATE accounting_entries SET category='Kitos išlaidos' WHERE type='expense' AND (description LIKE '%KITOS PREKE%' OR description LIKE '%KITOS IŠLAIDOS%' OR description LIKE '%KITOS ISLAIDOS%')"); } catch {}
 // Clean up (SF: TRUE/FALSE) suffix from imported descriptions
 try { db.exec("UPDATE accounting_entries SET description = REPLACE(REPLACE(description, ' (SF: FALSE)', ''), ' (SF: TRUE)', '') WHERE description LIKE '%(SF:%'"); } catch {}
+// Todos
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    priority TEXT DEFAULT 'medium',
+    due_date TEXT,
+    status TEXT DEFAULT 'pending',
+    category TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    completed_at TEXT
+  )`);
+} catch {}
+
 // Production queue
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS production_queue (

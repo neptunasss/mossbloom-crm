@@ -70,6 +70,10 @@
         <i data-lucide="calculator" class="nav-icon"></i>
         Kainodara
       </a>
+      <a href="#" class="nav-item" data-view="todos">
+        <i data-lucide="check-square" class="nav-icon"></i>
+        Užduotys
+      </a>
     </nav>
 
     <div class="sidebar-stores">
@@ -1372,6 +1376,123 @@
   </div>
 </div>
 
+<!-- ── Todos View ── -->
+<div class="view" id="view-todos" hidden>
+  <div class="content-body">
+
+    <!-- Stats row -->
+    <div class="todos-stats-row" id="todos-stats-row">
+      <div class="todos-stat-card">
+        <div class="todos-stat-label">Aktyvios užduotys</div>
+        <div class="todos-stat-value" id="todo-stat-active">—</div>
+      </div>
+      <div class="todos-stat-card">
+        <div class="todos-stat-label">Vėluojančios</div>
+        <div class="todos-stat-value" id="todo-stat-overdue" style="color:var(--red)">—</div>
+      </div>
+      <div class="todos-stat-card">
+        <div class="todos-stat-label">Užbaigta šią savaitę</div>
+        <div class="todos-stat-value" id="todo-stat-week">—</div>
+      </div>
+      <div class="todos-stat-card">
+        <div class="todos-stat-label">Aukšto prioriteto</div>
+        <div class="todos-stat-value" id="todo-stat-high" style="color:var(--red)">—</div>
+      </div>
+    </div>
+
+    <!-- Quick-add row -->
+    <div class="todo-quickadd">
+      <input type="text" id="todo-quick-input" class="todo-quick-input" placeholder="Pridėti užduotį…" autocomplete="off">
+      <div class="todo-priority-dots" id="todo-priority-dots">
+        <span class="todo-dot todo-dot-high" title="Aukštas" data-priority="high"></span>
+        <span class="todo-dot todo-dot-medium active" title="Vidutinis" data-priority="medium"></span>
+        <span class="todo-dot todo-dot-low" title="Žemas" data-priority="low"></span>
+      </div>
+      <input type="date" id="todo-quick-due" class="todo-quick-due" title="Terminas">
+      <button class="btn-primary todo-add-btn" onclick="todoQuickAdd()">+</button>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="todos-filter-bar">
+      <div class="seg-control">
+        <button class="seg-btn active" data-todo-status="all" onclick="setTodoStatusFilter('all', this)">Visos</button>
+        <button class="seg-btn" data-todo-status="active" onclick="setTodoStatusFilter('active', this)">Aktyvios</button>
+        <button class="seg-btn" data-todo-status="completed" onclick="setTodoStatusFilter('completed', this)">Užbaigtos</button>
+      </div>
+      <div class="todos-filter-right">
+        <div class="seg-control">
+          <button class="seg-btn active" data-todo-pri="all" onclick="setTodoPriFilter('all', this)">Visi</button>
+          <button class="seg-btn" data-todo-pri="high" onclick="setTodoPriFilter('high', this)"><span class="todo-dot todo-dot-high" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Aukštas</button>
+          <button class="seg-btn" data-todo-pri="medium" onclick="setTodoPriFilter('medium', this)"><span class="todo-dot todo-dot-medium" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Vidutinis</button>
+          <button class="seg-btn" data-todo-pri="low" onclick="setTodoPriFilter('low', this)"><span class="todo-dot todo-dot-low" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>Žemas</button>
+        </div>
+        <select id="todo-sort" class="filter-select" onchange="loadTodos()">
+          <option value="due_date">Terminas</option>
+          <option value="priority">Prioritetas</option>
+          <option value="created">Sukurta</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Task list -->
+    <div id="todos-list"></div>
+
+    <!-- Empty state -->
+    <div id="todos-empty" class="todos-empty-state" hidden>
+      <div class="todos-empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <p>Nėra užduočių. Pridėkite pirmą!</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Todo expand/edit modal -->
+<div id="todo-edit-modal" class="modal-overlay" hidden>
+  <div class="modal todo-edit-modal-inner">
+    <div class="modal-header">
+      <h3 id="todo-edit-title-label">Redaguoti užduotį</h3>
+      <button class="btn-icon" onclick="closeTodoEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Pavadinimas</label>
+        <input type="text" id="todo-edit-title" class="search-input" style="width:100%;padding-left:10px">
+      </div>
+      <div class="form-group">
+        <label>Aprašymas</label>
+        <textarea id="todo-edit-desc" rows="3" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:14px;resize:vertical"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Prioritetas</label>
+          <select id="todo-edit-priority" class="filter-select" style="width:100%">
+            <option value="high">Aukštas</option>
+            <option value="medium" selected>Vidutinis</option>
+            <option value="low">Žemas</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Terminas</label>
+          <input type="date" id="todo-edit-due" class="search-input" style="width:100%;padding-left:10px">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Kategorija</label>
+        <input type="text" id="todo-edit-category" class="search-input" placeholder="pvz. Darbas, Asmeninis…" style="width:100%;padding-left:10px">
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn-secondary" id="todo-edit-delete-btn" onclick="deleteTodoFromModal()" style="color:var(--red);border-color:var(--red)">Ištrinti</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" onclick="closeTodoEditModal()">Atšaukti</button>
+        <button class="btn-primary" onclick="saveTodoEdit()">Išsaugoti</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -1384,6 +1505,7 @@
 <script src="/js/products.js"></script>
 <script src="/js/invoices.js"></script>
 <script src="/js/clients.js"></script>
+<script src="/js/todos.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -61,8 +61,8 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai', 'inv-create': 'Nauja sąskaita' };
-  const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '', invoices: '', clients: '', 'inv-create': '' };
+  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai', 'inv-create': 'Nauja sąskaita', todos: 'Užduotys' };
+  const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '', invoices: '', clients: '', 'inv-create': '', todos: '' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.getElementById('page-subtitle').textContent = subtitles[view] || '';
   document.body.classList.toggle('acct-mode', view === 'accounting');
@@ -70,7 +70,7 @@ function switchView(view) {
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
-  document.getElementById('header-count').hidden = ['calculator','production','invoices','clients','inv-create'].includes(view);
+  document.getElementById('header-count').hidden = ['calculator','production','invoices','clients','inv-create','todos'].includes(view);
 
   updateToolbarDate();
 
@@ -82,6 +82,7 @@ function switchView(view) {
   if (view === 'products')   initProducts();
   if (view === 'invoices')   initInvoices();
   if (view === 'clients')    initClients();
+  if (view === 'todos')      initTodos();
 
   // Close sidebar on mobile after nav click
   document.querySelector('.sidebar').classList.remove('open');
