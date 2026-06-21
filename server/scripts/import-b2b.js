@@ -1,19 +1,21 @@
 'use strict';
 
-// 12 B2B orders from Excel accounting file — total €18,052.26
+// B2B orders YTD — source of truth, updated 2026-06-21
 const B2B_ORDERS = [
-  { date: '2026-01-08', amount: 3025.00, note: 'AVANSAS',                                    invoice: true  },
-  { date: '2026-02-19', amount: 5000.00, note: 'išmokėjo kitą dalį įmonė',                   invoice: false },
-  { date: '2026-02-20', amount:  170.00, note: null,                                          invoice: true  },
-  { date: '2026-03-12', amount:  629.20, note: null,                                          invoice: true  },
-  { date: '2026-03-19', amount:  314.60, note: null,                                          invoice: true  },
-  { date: '2026-04-07', amount: 2330.70, note: 'B2B',                                         invoice: true  },
-  { date: '2026-04-07', amount:   78.65, note: null,                                          invoice: true  },
-  { date: '2026-04-08', amount: 2000.00, note: 'VIS DAR TA PATI VELUOJANTI IMONE',            invoice: true  },
-  { date: '2026-04-13', amount: 1512.51, note: 'B2B',                                         invoice: true  },
-  { date: '2026-04-17', amount:  133.10, note: 'viešasis pirkimas, SF įkelta į sistemą',      invoice: true  },
-  { date: '2026-05-13', amount: 1890.50, note: 'B2B',                                         invoice: false },
-  { date: '2026-05-18', amount:  968.00, note: null,                                          invoice: false },
+  { date: '2026-01-08', amount: 3025.00, note: 'AVANSAS',                         invoice: true  },
+  { date: '2026-02-19', amount: 5000.00, note: 'išmokėjo kitą dalį įmonė',        invoice: false },
+  { date: '2026-02-20', amount:  170.00, note: null,                               invoice: true  },
+  { date: '2026-03-12', amount:  629.20, note: null,                               invoice: true  },
+  { date: '2026-03-19', amount:  314.60, note: null,                               invoice: true  },
+  { date: '2026-04-07', amount: 2330.70, note: 'B2B',                              invoice: true  },
+  { date: '2026-04-07', amount:   78.65, note: null,                               invoice: true  },
+  { date: '2026-04-08', amount: 2000.00, note: 'VIS DAR TA PATI VELUOJANTI IMONE',invoice: true  },
+  { date: '2026-05-13', amount: 1890.50, note: 'B2B',                              invoice: false },
+  { date: '2026-05-18', amount:  968.00, note: null,                               invoice: false },
+  { date: '2026-05-25', amount:  478.00, note: null,                               invoice: false },
+  { date: '2026-05-29', amount:  794.97, note: null,                               invoice: false },
+  { date: '2026-06-03', amount: 2420.00, note: null,                               invoice: false },
+  { date: '2026-06-17', amount:  248.99, note: null,                               invoice: false },
 ];
 
 // Stable reference ID: date + amount in cents — unique per record, safe to re-run
@@ -22,11 +24,23 @@ function refId(o) {
 }
 
 function runImport(db) {
-  let inserted = 0, skipped = 0;
+  let inserted = 0, skipped = 0, removed = 0;
 
+  // Build set of valid reference IDs
+  const validRefs = new Set(B2B_ORDERS.map(refId));
+
+  // Remove stale b2b_import entries that are no longer in the list
+  const existing = db.prepare("SELECT id, reference_id FROM accounting_entries WHERE source = 'b2b_import'").all();
+  for (const row of existing) {
+    if (!validRefs.has(row.reference_id)) {
+      db.prepare('DELETE FROM accounting_entries WHERE id = ?').run(row.id);
+      removed++;
+    }
+  }
+
+  // Insert any missing entries
   for (const o of B2B_ORDERS) {
     const ref = refId(o);
-
     const exists = db.prepare(
       "SELECT id FROM accounting_entries WHERE source = 'b2b_import' AND reference_id = ?"
     ).get(ref);
@@ -46,7 +60,7 @@ function runImport(db) {
   }
 
   const expectedTotal = B2B_ORDERS.reduce((s, o) => s + o.amount, 0);
-  return { inserted, skipped, total: B2B_ORDERS.length, expectedTotal };
+  return { inserted, skipped, removed, total: B2B_ORDERS.length, expectedTotal };
 }
 
 module.exports = { runImport, B2B_ORDERS };
@@ -65,6 +79,7 @@ if (require.main === module) {
   console.log(`\nB2B import complete:`);
   console.log(`  Inserted : ${result.inserted}`);
   console.log(`  Skipped  : ${result.skipped} (already exist)`);
+  console.log(`  Removed  : ${result.removed} (no longer in list)`);
   console.log(`  Total    : ${result.total} records`);
   console.log(`  Expected : €${result.expectedTotal.toFixed(2)}`);
 }
