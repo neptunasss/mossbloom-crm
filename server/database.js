@@ -1,3 +1,8 @@
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// NEVER DROP accounting_entries OR invoices TABLES — they hold real business
+// data (B2B income, expenses, invoices). Use ALTER TABLE / ADD COLUMN only.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');

@@ -389,6 +389,12 @@ router.delete('/:storeId/:orderId', requireAuth, (req, res) => {
     if (storeId === 'b2b') {
       if (String(orderId).startsWith('ae-')) {
         const aeId = parseInt(orderId.slice(3));
+        const ae = db.prepare('SELECT source FROM accounting_entries WHERE id = ?').get(aeId);
+        // b2b_import entries are re-imported from the hardcoded list — block deletion to prevent confusion
+        if (!ae) return res.status(404).json({ error: 'Įrašas nerastas' });
+        if (ae.source === 'b2b_import') {
+          return res.status(403).json({ error: 'Šis B2B įrašas importuotas automatiškai ir negali būti ištrintas' });
+        }
         db.prepare('DELETE FROM accounting_entries WHERE id = ?').run(aeId);
       } else {
         const b2b = db.prepare('SELECT accounting_id FROM b2b_orders WHERE id = ?').get(parseInt(orderId));
