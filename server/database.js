@@ -13,7 +13,27 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const db = new Database(path.join(dataDir, 'mossbloom.db'));
+const dbPath = path.join(dataDir, 'mossbloom.db');
+
+// Auto-backup: keep last 7 daily backups before opening the database
+(function autoBackup() {
+  if (!fs.existsSync(dbPath)) return;
+  const backupDir = path.join(dataDir, 'backups');
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
+  const today = new Date().toISOString().slice(0, 10);
+  const dest = path.join(backupDir, `mossbloom-${today}.db`);
+  if (!fs.existsSync(dest)) {
+    fs.copyFileSync(dbPath, dest);
+    console.log(`[db] backup created: backups/mossbloom-${today}.db`);
+  }
+  // Prune backups older than 7 days
+  const files = fs.readdirSync(backupDir).filter(f => f.startsWith('mossbloom-') && f.endsWith('.db')).sort();
+  while (files.length > 7) {
+    fs.unlinkSync(path.join(backupDir, files.shift()));
+  }
+})();
+
+const db = new Database(dbPath);
 
 db.exec('PRAGMA journal_mode = WAL');
 
