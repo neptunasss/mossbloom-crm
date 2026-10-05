@@ -5,3 +5,10 @@ builder = "NIXPACKS"
 startCommand = "node server/index.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
+requiredMountPath = "/data"
+
+# requiredMountPath only declares the requirement — Railway does not
+# auto-create the volume. A Volume must still be attached at /data via
+# the dashboard (Settings -> Volumes) before the next deploy.
+# Also set DATA_DIR=/data in the dashboard's environment variables for
+# this service — railway.toml cannot set env vars itself.

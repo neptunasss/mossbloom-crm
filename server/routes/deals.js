@@ -115,7 +115,8 @@ router.delete('/:id', requireAuth, (req, res) => {
   const files = db.prepare('SELECT filename FROM order_files WHERE deal_id = ?').all(id);
   const path = require('path');
   const fs   = require('fs');
-  const dir  = path.join(__dirname, '../../data/uploads');
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, '../../data');
+  const dir  = path.join(dataDir, 'uploads');
   for (const f of files) {
     const fp = path.join(dir, f.filename);
     if (fs.existsSync(fp)) fs.unlinkSync(fp);

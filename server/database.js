@@ -8,17 +8,17 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 
-const dataDir = path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const dbPath = path.join(dataDir, 'mossbloom.db');
+const dbPath = path.join(DATA_DIR, 'mossbloom.db');
 
 // Auto-backup: keep last 7 daily backups before opening the database
 (function autoBackup() {
   if (!fs.existsSync(dbPath)) return;
-  const backupDir = path.join(dataDir, 'backups');
+  const backupDir = path.join(DATA_DIR, 'backups');
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
   const today = new Date().toISOString().slice(0, 10);
   const dest = path.join(backupDir, `mossbloom-${today}.db`);
@@ -344,26 +344,6 @@ try {
 
 // Soft-delete flag for WC orders (B2B are hard-deleted)
 try { db.exec('ALTER TABLE orders_cache ADD COLUMN hidden INTEGER DEFAULT 0'); } catch {}
-
-// Invoices
-try {
-  db.exec(`CREATE TABLE IF NOT EXISTS invoices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_number TEXT UNIQUE,
-    order_id TEXT,
-    store_id TEXT,
-    customer_name TEXT,
-    customer_company TEXT,
-    customer_vat TEXT,
-    customer_address TEXT,
-    amount REAL,
-    vat_amount REAL,
-    issue_date TEXT,
-    due_date TEXT,
-    items_json TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now'))
-  )`);
-} catch {}
 
 // Settings (seller details for invoices)
 try {

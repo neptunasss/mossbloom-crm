@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 
 require('./database');
@@ -9,11 +10,13 @@ const telegram = require('./services/telegram');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
+  store: new SQLiteStore({ dir: DATA_DIR, db: 'sessions.db' }),
   secret: process.env.SESSION_SECRET || 'mossbloom-crm-secret',
   resave: false,
   saveUninitialized: false,

@@ -70,7 +70,8 @@ if (require.main === module) {
   require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
   const path     = require('path');
   const Database = require('better-sqlite3');
-  const dbPath   = path.join(__dirname, '../../data/mossbloom.db');
+  const dataDir  = process.env.DATA_DIR || path.join(__dirname, '../../data');
+  const dbPath   = path.join(dataDir, 'mossbloom.db');
 
   const db     = new Database(dbPath);
   const result = runImport(db);
