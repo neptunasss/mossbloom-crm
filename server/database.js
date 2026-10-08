@@ -368,6 +368,157 @@ try {
   )`);
 } catch {}
 
+// ── Cold email outreach module (new, isolated — no existing tables/routes touched) ──
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_domains (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL,
+    daily_limit INTEGER DEFAULT 100,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_mailboxes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain_id INTEGER,
+    email TEXT NOT NULL,
+    display_name TEXT,
+    smtp_host TEXT,
+    smtp_port INTEGER,
+    smtp_user TEXT,
+    smtp_pass TEXT,
+    imap_host TEXT,
+    imap_port INTEGER,
+    imap_user TEXT,
+    imap_pass TEXT,
+    daily_limit INTEGER DEFAULT 30,
+    hourly_limit INTEGER DEFAULT 5,
+    warmup_mode INTEGER DEFAULT 1,
+    warmup_day INTEGER DEFAULT 0,
+    warmup_start_limit INTEGER DEFAULT 3,
+    warmup_end_limit INTEGER DEFAULT 30,
+    bounce_rate REAL DEFAULT 0,
+    status TEXT DEFAULT 'warmup',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    email TEXT,
+    phone TEXT,
+    website TEXT,
+    industry TEXT,
+    city TEXT,
+    country TEXT,
+    status TEXT DEFAULT 'new',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    status TEXT DEFAULT 'draft',
+    daily_limit INTEGER,
+    track_opens INTEGER DEFAULT 1,
+    track_clicks INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_campaign_mailboxes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    mailbox_id INTEGER NOT NULL
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_campaign_leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    lead_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    added_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_sequences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    step_number INTEGER NOT NULL,
+    subject TEXT,
+    body_html TEXT,
+    body_text TEXT,
+    delay_days INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_email_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    lead_id INTEGER NOT NULL,
+    mailbox_id INTEGER,
+    sequence_id INTEGER,
+    scheduled_at TEXT,
+    sent_at TEXT,
+    status TEXT DEFAULT 'pending',
+    message_id TEXT,
+    open_count INTEGER DEFAULT 0,
+    last_opened_at TEXT,
+    error_message TEXT
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue_id INTEGER,
+    lead_id INTEGER,
+    mailbox_id INTEGER,
+    received_at TEXT,
+    subject TEXT,
+    body_text TEXT,
+    is_bounce INTEGER DEFAULT 0,
+    sentiment TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_suppressions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    reason TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+  const osi = db.prepare('INSERT OR IGNORE INTO outreach_system_settings (key, value) VALUES (?, ?)');
+  osi.run('global_paused', 'false');
+  osi.run('hourly_system_limit', '50');
+} catch {}
+
 // Migrate old deal statuses → pipeline statuses
 db.exec(`
   UPDATE custom_deals SET status = 'lead'        WHERE status = 'pending';
