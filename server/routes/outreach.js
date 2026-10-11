@@ -7,6 +7,7 @@ const tls         = require('tls');
 const multer      = require('multer');
 const requireAuth = require('../middleware/auth');
 const db          = require('../database');
+const common      = require('../services/outreach-common');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -139,6 +140,14 @@ router.post('/mailboxes', requireAuth, (req, res) => {
   } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });
 
+  let encSmtp, encImap;
+  try {
+    encSmtp = common.encrypt(smtp_pass || '');
+    encImap = common.encrypt(imap_pass || '');
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+
   const result = db.prepare(`
     INSERT INTO outreach_mailboxes (
       domain_id, email, display_name,
@@ -149,8 +158,8 @@ router.post('/mailboxes', requireAuth, (req, res) => {
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     domain_id ?? null, email, display_name || '',
-    smtp_host || '', smtp_port ?? null, smtp_user || '', smtp_pass || '',
-    imap_host || '', imap_port ?? null, imap_user || '', imap_pass || '',
+    smtp_host || '', smtp_port ?? null, smtp_user || '', encSmtp,
+    imap_host || '', imap_port ?? null, imap_user || '', encImap,
     daily_limit ?? 30, hourly_limit ?? 5, warmup_mode === false ? 0 : 1, warmup_day ?? 0,
     warmup_start_limit ?? 3, warmup_end_limit ?? 30, status || 'warmup',
   );
@@ -161,7 +170,14 @@ router.put('/mailboxes/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id FROM outreach_mailboxes WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  const updated = buildUpdate('outreach_mailboxes', id, req.body, [
+  const body = { ...req.body };
+  try {
+    if (body.smtp_pass !== undefined) body.smtp_pass = common.encrypt(body.smtp_pass);
+    if (body.imap_pass !== undefined) body.imap_pass = common.encrypt(body.imap_pass);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  const updated = buildUpdate('outreach_mailboxes', id, body, [
     'domain_id', 'email', 'display_name',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
     'imap_host', 'imap_port', 'imap_user', 'imap_pass',
@@ -208,7 +224,8 @@ router.post('/mailboxes/:id/resume', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id, warmup_mode FROM outreach_mailboxes WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  db.prepare('UPDATE outreach_mailboxes SET status = ? WHERE id = ?').run(row.warmup_mode ? 'warmup' : 'active', id);
+  db.prepare('UPDATE outreach_mailboxes SET status = ?, pause_reason = NULL, consecutive_smtp_errors = 0 WHERE id = ?')
+    .run(row.warmup_mode ? 'warmup' : 'active', id);
   res.json({ ok: true });
 });
 
@@ -299,11 +316,8 @@ router.post('/leads/:id/unsubscribe', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const lead = db.prepare('SELECT * FROM outreach_leads WHERE id = ?').get(id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  db.prepare("UPDATE outreach_leads SET status = 'unsubscribed', updated_at = (datetime('now')) WHERE id = ?").run(id);
-  if (lead.email) {
-    db.prepare('INSERT OR IGNORE INTO outreach_suppressions (email, reason) VALUES (?, ?)').run(lead.email, 'unsubscribe');
-  }
-  res.json({ ok: true });
+  const cancelled = common.stopLead(id, 'unsubscribed', { suppress: true, reason: 'unsubscribe' });
+  res.json({ ok: true, cancelled });
 });
 
 // ── CAMPAIGNS ────────────────────────────────────────────────────────────────
@@ -552,6 +566,21 @@ router.post('/suppressions', requireAuth, (req, res) => {
 router.delete('/suppressions/:id', requireAuth, (req, res) => {
   db.prepare('DELETE FROM outreach_suppressions WHERE id = ?').run(parseInt(req.params.id, 10));
   res.json({ ok: true });
+});
+
+// ── WORKER LOG ───────────────────────────────────────────────────────────────
+
+// GET /api/outreach/worker-log?level=error&mailbox_id=3&since_id=120&limit=100
+router.get('/worker-log', requireAuth, (req, res) => {
+  const { level, mailbox_id, since_id, limit = 100, offset = 0 } = req.query;
+  let q = 'SELECT * FROM outreach_worker_log WHERE 1=1';
+  const params = [];
+  if (level && level !== 'all') { q += ' AND level = ?'; params.push(level); }
+  if (mailbox_id) { q += ' AND mailbox_id = ?'; params.push(parseInt(mailbox_id, 10)); }
+  if (since_id) { q += ' AND id > ?'; params.push(parseInt(since_id, 10)); }
+  q += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+  const log = db.prepare(q).all(...params, Math.min(Number(limit) || 100, 1000), Number(offset) || 0);
+  res.json({ log });
 });
 
 module.exports = router;

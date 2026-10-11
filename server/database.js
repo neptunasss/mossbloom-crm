@@ -36,6 +36,9 @@ const dbPath = path.join(DATA_DIR, 'mossbloom.db');
 const db = new Database(dbPath);
 
 db.exec('PRAGMA journal_mode = WAL');
+// Web server and outreach worker are separate processes sharing this file —
+// wait up to 5s for the other process's write lock instead of failing.
+db.exec('PRAGMA busy_timeout = 5000');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -517,6 +520,55 @@ try {
   const osi = db.prepare('INSERT OR IGNORE INTO outreach_system_settings (key, value) VALUES (?, ?)');
   osi.run('global_paused', 'false');
   osi.run('hourly_system_limit', '50');
+  // Safety default: worker logs what it would send but never sends until
+  // this is switched to 'false' manually.
+  osi.run('dry_run', 'true');
+} catch {}
+
+// Outreach worker columns/tables
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN subject TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN in_reply_to TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN thread_references TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN claimed_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN dry_run_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN warmup_daily_limit INTEGER'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN warmup_last_date TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN next_send_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN consecutive_smtp_errors INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN pause_reason TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN imap_uidvalidity TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN imap_last_uid INTEGER'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN imap_last_check_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_replies ADD COLUMN from_email TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_replies ADD COLUMN message_id TEXT'); } catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_worker_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    level TEXT NOT NULL,
+    mailbox_id INTEGER,
+    message TEXT NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_outreach_worker_log_ts ON outreach_worker_log(timestamp)');
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_processed_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mailbox_id INTEGER NOT NULL,
+    message_key TEXT NOT NULL,
+    result TEXT,
+    processed_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(mailbox_id, message_key)
+  )`);
+} catch {}
+
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_outreach_queue_status_sched ON outreach_email_queue(status, scheduled_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_outreach_queue_mailbox_sent ON outreach_email_queue(mailbox_id, sent_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_outreach_queue_lead ON outreach_email_queue(lead_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_outreach_queue_message_id ON outreach_email_queue(message_id)');
 } catch {}
 
 // Migrate old deal statuses → pipeline statuses

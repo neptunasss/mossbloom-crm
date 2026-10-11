@@ -42,7 +42,47 @@ app.use('/api/todos',     require('./routes/todos'));
 app.use('/api/admin',     require('./routes/admin'));
 app.use('/api/outreach',  require('./routes/outreach'));
 
+// Public (no auth) — unsubscribe links from outreach emails
+app.use('/u', require('./routes/unsubscribe'));
+
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Outreach worker: separate process in the same service (it needs the same
+// SQLite volume). Auto-restarts 30s after a crash.
+function startOutreachWorker() {
+  if (process.env.OUTREACH_WORKER_DISABLED === 'true') {
+    console.log('[WORKER] disabled via OUTREACH_WORKER_DISABLED=true');
+    return;
+  }
+  const { fork } = require('child_process');
+  const readline = require('readline');
+  let child = null;
+  let stopping = false;
+
+  const spawn = () => {
+    child = fork(path.join(__dirname, 'worker/index.js'), [], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    readline.createInterface({ input: child.stdout }).on('line', l => console.log(`[WORKER] ${l}`));
+    readline.createInterface({ input: child.stderr }).on('line', l => console.error(`[WORKER] ${l}`));
+    child.on('exit', (code, signal) => {
+      child = null;
+      if (stopping) return;
+      console.error(`[WORKER] exited (code ${code}, signal ${signal}) — restarting in 30s`);
+      setTimeout(spawn, 30000);
+    });
+  };
+
+  const shutdown = () => {
+    stopping = true;
+    if (!child) process.exit(0);
+    child.once('exit', () => process.exit(0));
+    child.kill('SIGTERM');
+    setTimeout(() => process.exit(0), 25000).unref();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+
+  spawn();
+}
 
 app.listen(PORT, () => {
   const pwd = process.env.ADMIN_PASSWORD || 'mossbloom2024';
@@ -67,6 +107,8 @@ app.listen(PORT, () => {
     ['GOOGLE_SHEET_ID',     process.env.GOOGLE_SHEET_ID],
     ['GOOGLE_SERVICE_ACCOUNT_EMAIL', process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL],
     ['GOOGLE_SERVICE_ACCOUNT_KEY', process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? `SET (${process.env.GOOGLE_SERVICE_ACCOUNT_KEY.length} chars)` : 'MISSING ⚠️'],
+    ['ENCRYPTION_KEY',      process.env.ENCRYPTION_KEY],
+    ['PUBLIC_URL',          process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN && `(from RAILWAY_PUBLIC_DOMAIN) https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)],
   ];
   for (const [name, val] of envCheck) {
     const display = name.endsWith('_SECRET') || name.endsWith('_KEY') || name === 'SESSION_SECRET' || name === 'ADMIN_PASSWORD'
@@ -75,6 +117,7 @@ app.listen(PORT, () => {
     console.log(`  ${name.padEnd(22)} = ${display}`);
   }
   console.log('───────────────────────────────────────────────\n');
+  startOutreachWorker();
   if (telegram.configured) {
     telegram.startPolling();
     telegram.startReminderCheck();
