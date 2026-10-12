@@ -7,7 +7,7 @@
 
 const OR = {
   dashTimer: null,
-  leads: { offset: 0, limit: 50, status: 'all', search: '', selected: new Set(), total: 0 },
+  leads: { offset: 0, limit: 50, status: 'all', search: '', industry: 'all', city: 'all', list_name: 'all', selected: new Set(), allMatching: false, allFilter: null, total: 0 },
   inbox: { filter: 'untagged', offset: 0, limit: 30, items: [] },
   campaignId: null,      // open in editor, null = list
   editorTab: 'settings',
@@ -552,15 +552,68 @@ async function orDeleteMailbox(id) {
 let orLeadRows = [];
 let orLeadSearchTimer;
 
+// ── Segment filters (industry / city / list) shared by Leads page + campaign ──
+
+let orFacets = null;
+
+async function orLoadFacets() {
+  try { orFacets = await api('/api/outreach/leads/facets'); }
+  catch { orFacets = { industries: [], cities: [], lists: [], none: {} }; }
+  return orFacets;
+}
+
+const OR_FACET = {
+  industry:  { key: 'industries', label: 'Industry', all: 'All industries', none: '(no industry)' },
+  city:      { key: 'cities',     label: 'City',     all: 'All cities',     none: '(no city)' },
+  list_name: { key: 'lists',      label: 'List',     all: 'All lists',      none: '(no list)' },
+};
+
+function orFacetSelect(field, current, attrs) {
+  const meta = OR_FACET[field];
+  const items = orFacets?.[meta.key] || [];
+  const noneCount = orFacets?.none?.[field] || 0;
+  return `<select class="filter-select or-facet-select" ${attrs}>
+    <option value="all">${meta.all}</option>
+    ${items.map(f => `<option value="${esc(f.value)}" ${current === f.value ? 'selected' : ''}>${esc(f.value)} (${f.count})</option>`).join('')}
+    ${noneCount ? `<option value="__none__" ${current === '__none__' ? 'selected' : ''}>${meta.none} (${noneCount})</option>` : ''}
+  </select>`;
+}
+
+// Filter object → query params (skips "all"/empty)
+function orFilterParams(f, p = new URLSearchParams()) {
+  for (const k of ['status', 'search', 'industry', 'city', 'list_name']) {
+    if (f[k] && f[k] !== 'all') p.set(k, f[k]);
+  }
+  return p;
+}
+
+function orFilterSummary(f) {
+  const parts = [];
+  if (f.status && f.status !== 'all') parts.push(`status: ${f.status}`);
+  for (const k of ['industry', 'city', 'list_name']) {
+    if (f[k] && f[k] !== 'all') parts.push(`${OR_FACET[k].label.toLowerCase()}: ${f[k] === '__none__' ? OR_FACET[k].none : f[k]}`);
+  }
+  if (f.search) parts.push(`search: “${f.search}”`);
+  return parts.length ? parts.join(' · ') : 'all leads (no filter)';
+}
+
+function orLeadFilterNow() {
+  const L = OR.leads;
+  return { status: L.status, search: L.search, industry: L.industry, city: L.city, list_name: L.list_name };
+}
+
 function orRenderLeadsShell() {
   const L = OR.leads;
   orRoot('leads').innerHTML = `
     <div class="filters-bar">
       <div class="filter-controls">
-        <select class="filter-select" onchange="OR.leads.status=this.value;OR.leads.offset=0;orLoadLeads()">
+        <select class="filter-select" onchange="orSetLeadFilter('status', this.value)">
           ${['all', 'new', 'contacted', 'replied', 'bounced', 'unsubscribed'].map(s =>
             `<option value="${s}" ${L.status === s ? 'selected' : ''}>${s === 'all' ? 'All statuses' : s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
         </select>
+        ${orFacetSelect('industry', L.industry, `onchange="orSetLeadFilter('industry', this.value)"`)}
+        ${orFacetSelect('city', L.city, `onchange="orSetLeadFilter('city', this.value)"`)}
+        ${orFacetSelect('list_name', L.list_name, `onchange="orSetLeadFilter('list_name', this.value)"`)}
         <div class="search-wrap">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           <input type="search" class="search-input" id="or-lead-search" placeholder="Name, company or email" value="${esc(L.search)}" oninput="orLeadSearch(this.value)">
@@ -576,21 +629,32 @@ function orRenderLeadsShell() {
     <div class="or-pager" id="or-leads-pager"></div>`;
 }
 
+function orSetLeadFilter(key, value) {
+  OR.leads[key] = value;
+  OR.leads.offset = 0;
+  OR.leads.allMatching = false; // a new filter means a new segment
+  orLoadLeads();
+}
+
 function orLeadSearch(value) {
   clearTimeout(orLeadSearchTimer);
-  orLeadSearchTimer = setTimeout(() => {
-    OR.leads.search = value.trim();
-    OR.leads.offset = 0;
-    orLoadLeads();
-  }, 280);
+  orLeadSearchTimer = setTimeout(() => orSetLeadFilter('search', value.trim()), 280);
+}
+
+// Re-render filter dropdowns (e.g. after import added new industries/lists)
+async function orRefreshLeadFacets() {
+  await orLoadFacets();
+  orRoot('leads').innerHTML = '';
+  orLoadLeads();
 }
 
 async function orLoadLeads() {
-  if (!document.getElementById('or-leads-table')) orRenderLeadsShell();
+  if (!document.getElementById('or-leads-table')) {
+    if (!orFacets) await orLoadFacets();
+    orRenderLeadsShell();
+  }
   const L = OR.leads;
-  const p = new URLSearchParams({ limit: L.limit, offset: L.offset });
-  if (L.status !== 'all') p.set('status', L.status);
-  if (L.search) p.set('search', L.search);
+  const p = orFilterParams(orLeadFilterNow(), new URLSearchParams({ limit: L.limit, offset: L.offset }));
   try {
     const { leads, total } = await api(`/api/outreach/leads?${p}`);
     orLeadRows = leads;
@@ -602,23 +666,27 @@ async function orLoadLeads() {
 function orRenderLeads() {
   const L = OR.leads;
   const wrap = document.getElementById('or-leads-table');
+  const filtered = L.search || L.status !== 'all' || L.industry !== 'all' || L.city !== 'all' || L.list_name !== 'all';
   if (!orLeadRows.length) {
-    wrap.innerHTML = `<div class="empty-state"><h3>No leads found</h3><p>${L.search || L.status !== 'all' ? 'Try another filter.' : 'Import a CSV or add leads one by one.'}</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><h3>No leads found</h3><p>${filtered ? 'Try another filter.' : 'Import a CSV or add leads one by one.'}</p></div>`;
   } else {
-    const allOnPage = orLeadRows.every(l => L.selected.has(l.id));
+    const isSel = (id) => L.allMatching || L.selected.has(id);
+    const allOnPage = orLeadRows.every(l => isSel(l.id));
     wrap.innerHTML = `
       <table class="orders-table or-leads-table">
         <thead><tr>
-          <th class="or-col-check"><input type="checkbox" ${allOnPage ? 'checked' : ''} onchange="orSelectPage(this.checked)" aria-label="Select page"></th>
-          <th>Name</th><th>Company</th><th class="col-email">Email</th><th>City</th><th>Status</th><th class="col-date">Added</th><th></th>
+          <th class="or-col-check"><input type="checkbox" ${allOnPage ? 'checked' : ''} ${L.allMatching ? 'disabled' : ''} onchange="orSelectPage(this.checked)" aria-label="Select page"></th>
+          <th>Name</th><th>Company</th><th class="col-email">Email</th><th>City</th><th>Industry</th><th>List</th><th>Status</th><th class="col-date">Added</th><th></th>
         </tr></thead>
         <tbody>${orLeadRows.map(l => `
-          <tr class="${L.selected.has(l.id) ? 'or-row-selected' : ''}">
-            <td class="or-col-check"><input type="checkbox" ${L.selected.has(l.id) ? 'checked' : ''} onchange="orSelectLead(${l.id}, this.checked)"></td>
+          <tr class="${isSel(l.id) ? 'or-row-selected' : ''}">
+            <td class="or-col-check"><input type="checkbox" ${isSel(l.id) ? 'checked' : ''} ${L.allMatching ? 'disabled' : ''} onchange="orSelectLead(${l.id}, this.checked)"></td>
             <td class="col-customer">${esc([l.first_name, l.last_name].filter(Boolean).join(' ') || '—')}</td>
             <td>${esc(l.company_name || '—')}</td>
             <td class="col-email">${esc(l.email)}</td>
             <td>${esc(l.city || '—')}</td>
+            <td>${esc(l.industry || '—')}</td>
+            <td>${l.list_name ? `<span class="or-list-chip">${esc(l.list_name)}</span>` : '<span class="or-muted">—</span>'}</td>
             <td>${orBadge(l.status)}</td>
             <td class="col-date">${orDate(l.created_at, false)}</td>
             <td class="col-actions">
@@ -652,15 +720,38 @@ function orSelectPage(on) {
   orRenderLeads();
 }
 
+function orSelectAllMatching(on) {
+  const L = OR.leads;
+  L.allMatching = on;
+  L.allFilter = on ? orLeadFilterNow() : null;
+  if (on) L.selected.clear();
+  orRenderLeads();
+}
+
 function orRenderBulkbar() {
+  const L = OR.leads;
   const bar = document.getElementById('or-bulkbar');
-  const n = OR.leads.selected.size;
-  bar.hidden = !n;
-  bar.innerHTML = `<span><strong>${n}</strong> lead${n === 1 ? '' : 's'} selected</span>
-    <div class="filter-controls">
-      <button class="btn-secondary or-btn-sm" onclick="OR.leads.selected.clear();orRenderLeads()">Clear</button>
-      <button class="btn-primary or-btn-sm" onclick="orAddSelectedToCampaign()">Add to campaign</button>
-    </div>`;
+  const n = L.selected.size;
+  bar.hidden = !L.total && !n;
+  bar.classList.toggle('is-idle', !L.allMatching && !n);
+
+  const selectAllBtn = `<button class="or-link-btn" onclick="orSelectAllMatching(true)">Select all matching filter (${L.total} lead${L.total === 1 ? '' : 's'})</button>`;
+  if (L.allMatching) {
+    bar.innerHTML = `<span><strong>All ${L.total}</strong> lead${L.total === 1 ? '' : 's'} matching filter selected
+        <span class="or-muted">— ${esc(orFilterSummary(L.allFilter))}</span></span>
+      <div class="filter-controls">
+        <button class="btn-secondary or-btn-sm" onclick="orSelectAllMatching(false)">Clear</button>
+        <button class="btn-primary or-btn-sm" onclick="orAddSelectedToCampaign()">Add to campaign</button>
+      </div>`;
+  } else if (n) {
+    bar.innerHTML = `<span><strong>${n}</strong> lead${n === 1 ? '' : 's'} selected ${L.total > n ? `· ${selectAllBtn}` : ''}</span>
+      <div class="filter-controls">
+        <button class="btn-secondary or-btn-sm" onclick="OR.leads.selected.clear();orRenderLeads()">Clear</button>
+        <button class="btn-primary or-btn-sm" onclick="orAddSelectedToCampaign()">Add to campaign</button>
+      </div>`;
+  } else {
+    bar.innerHTML = `<span class="or-muted">Tick leads to add them to a campaign, or</span> ${selectAllBtn}`;
+  }
 }
 
 async function orAddSelectedToCampaign() {
@@ -670,26 +761,89 @@ async function orAddSelectedToCampaign() {
   if (!campaigns.length) {
     return toast('Create a campaign first (Campaigns → New campaign)', 'error');
   }
-  const ids = [...OR.leads.selected];
+  const L = OR.leads;
+  const bySegment = L.allMatching;
+  const ids = [...L.selected];
+  const count = bySegment ? L.total : ids.length;
   orModal({
-    title: `Add ${ids.length} lead${ids.length === 1 ? '' : 's'} to campaign`,
+    title: `Add ${count} lead${count === 1 ? '' : 's'} to campaign`,
     body: `<div class="form-group"><label>Campaign</label>
       <select id="or-add-camp">${campaigns.map(c => `<option value="${c.id}">${esc(c.name)} (${esc(c.status)}, ${c.lead_count} leads)</option>`).join('')}</select></div>
-      <p class="or-muted">Leads already in the campaign are skipped. Suppressed or bounced leads are skipped by the worker.</p>`,
+      ${bySegment ? `<p class="or-muted">Segment: ${esc(orFilterSummary(L.allFilter))}</p>` : ''}
+      <p class="or-muted">Leads already in the campaign${bySegment ? ' and suppressed emails' : ''} are skipped.${bySegment ? '' : ' Suppressed or bounced leads are skipped by the worker.'}</p>`,
     buttons: [
       { label: 'Cancel', onClick: orCloseModal },
       { label: 'Add leads', cls: 'btn-primary', onClick: async () => {
         const cid = document.getElementById('or-add-camp').value;
         try {
-          const r = await api(`/api/outreach/campaigns/${cid}/leads`, { method: 'POST', body: JSON.stringify({ lead_ids: ids }) });
-          orCloseModal();
-          toast(`${r.added} added, ${r.skipped} already in campaign`);
-          OR.leads.selected.clear();
-          orRenderLeads();
+          if (bySegment) {
+            const r = await api(`/api/outreach/campaigns/${cid}/leads-by-filter`, { method: 'POST', body: JSON.stringify(L.allFilter) });
+            orCloseModal();
+            toast(orSegmentResultText(r));
+            orSelectAllMatching(false);
+          } else {
+            const r = await api(`/api/outreach/campaigns/${cid}/leads`, { method: 'POST', body: JSON.stringify({ lead_ids: ids }) });
+            orCloseModal();
+            toast(`${r.added} added, ${r.skipped} already in campaign`);
+            L.selected.clear();
+            orRenderLeads();
+          }
         } catch (err) { toast('Error: ' + err.message, 'error'); }
       } },
     ],
   });
+}
+
+function orSegmentResultText(r) {
+  const parts = [`${r.added} added`];
+  if (r.skipped_existing) parts.push(`${r.skipped_existing} already in campaign`);
+  if (r.skipped_suppressed) parts.push(`${r.skipped_suppressed} suppressed`);
+  return parts.join(', ');
+}
+
+// Campaign side: "Add leads by filter" (industry / city / list)
+async function orAddByFilterModal(campaignId) {
+  await orLoadFacets();
+  const f = { industry: 'all', city: 'all', list_name: 'all' };
+  const sel = (field) => orFacetSelect(field, f[field], `data-field="${field}" onchange="orAddByFilterCount()"`);
+  orModal({
+    title: 'Add leads by filter',
+    body: `<div id="or-abf">
+      <div class="form-group"><label>Industry</label>${sel('industry')}</div>
+      <div class="form-group"><label>City</label>${sel('city')}</div>
+      <div class="form-group"><label>List</label>${sel('list_name')}</div>
+      <div class="or-abf-count" id="or-abf-count">Counting…</div>
+      <p class="or-muted">Leads already in this campaign and suppressed emails are skipped.</p>
+    </div>`,
+    buttons: [
+      { label: 'Cancel', onClick: orCloseModal },
+      { label: 'Add matching leads', cls: 'btn-primary', onClick: async () => {
+        try {
+          const r = await api(`/api/outreach/campaigns/${campaignId}/leads-by-filter`, { method: 'POST', body: JSON.stringify(orAddByFilterValues()) });
+          orCloseModal();
+          toast(orSegmentResultText(r));
+          orTabLeads();
+        } catch (err) { toast('Error: ' + err.message, 'error'); }
+      } },
+    ],
+  });
+  orAddByFilterCount();
+}
+
+function orAddByFilterValues() {
+  const out = {};
+  document.querySelectorAll('#or-abf select[data-field]').forEach(s => { out[s.dataset.field] = s.value; });
+  return out;
+}
+
+async function orAddByFilterCount() {
+  const el = document.getElementById('or-abf-count');
+  if (!el) return;
+  try {
+    const p = orFilterParams(orAddByFilterValues(), new URLSearchParams({ limit: 1 }));
+    const { total } = await api(`/api/outreach/leads?${p}`);
+    el.innerHTML = `<strong>${total}</strong> lead${total === 1 ? '' : 's'} match`;
+  } catch { el.textContent = ''; }
 }
 
 function orEditLead(id) {
@@ -701,7 +855,10 @@ function orEditLead(id) {
       <div class="form-row">${LEAD_FIELDS.slice(2, 4).map(([k, lbl]) => `<div class="form-group"><label>${lbl}</label><input name="${k}" value="${esc(l[k] || '')}"></div>`).join('')}</div>
       <div class="form-row">${LEAD_FIELDS.slice(4, 6).map(([k, lbl]) => `<div class="form-group"><label>${lbl}</label><input name="${k}" value="${esc(l[k] || '')}"></div>`).join('')}</div>
       <div class="form-row">${LEAD_FIELDS.slice(6, 8).map(([k, lbl]) => `<div class="form-group"><label>${lbl}</label><input name="${k}" value="${esc(l[k] || '')}"></div>`).join('')}</div>
-      <div class="form-group"><label>Industry</label><input name="industry" value="${esc(l.industry || '')}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Industry</label><input name="industry" value="${esc(l.industry || '')}"></div>
+        <div class="form-group"><label>List name</label><input name="list_name" value="${esc(l.list_name || '')}" placeholder="optional"></div>
+      </div>
     </div>`,
     buttons: [
       { label: 'Cancel', onClick: orCloseModal },
@@ -819,6 +976,10 @@ function orImportPreview() {
     title: 'Import leads — map columns',
     wide: true,
     body: `
+      <div class="form-group or-import-list">
+        <label>List name <span class="or-muted">(optional — lets you filter and add this import as a segment)</span></label>
+        <input value="${esc(orImport.listName || '')}" placeholder="e.g. Kavinės Vilnius 2026-10" maxlength="200" oninput="orImport.listName=this.value">
+      </div>
       <p><strong>2. Map columns</strong> <span class="or-muted">${esc(fileName)} · ${rows.length} rows · preview of first 10</span></p>
       <div class="table-wrap or-import-table">
         <table class="orders-table">
@@ -849,7 +1010,7 @@ async function orImportRun() {
   const totals = { imported: 0, skipped: 0, skipped_by_reason: { invalid: 0, duplicate: 0, suppressed: 0 } };
   try {
     for (let i = 0; i < objects.length; i += 2000) {
-      const r = await api('/api/outreach/leads/import', { method: 'POST', body: JSON.stringify({ rows: objects.slice(i, i + 2000) }) });
+      const r = await api('/api/outreach/leads/import', { method: 'POST', body: JSON.stringify({ rows: objects.slice(i, i + 2000), list_name: (orImport.listName || '').trim() }) });
       totals.imported += r.imported;
       totals.skipped += r.skipped;
       for (const k of Object.keys(totals.skipped_by_reason)) totals.skipped_by_reason[k] += r.skipped_by_reason[k] || 0;
@@ -870,7 +1031,12 @@ async function orImportRun() {
         ${s.invalid ? `<li>${s.invalid} missing or invalid email</li>` : ''}
       </ul>` : ''}
     </div>`,
-    buttons: [{ label: 'Done', cls: 'btn-primary', onClick: () => { orCloseModal(); OR.leads.offset = 0; orLoadLeads(); } }],
+    buttons: [{ label: 'Done', cls: 'btn-primary', onClick: () => {
+      orCloseModal();
+      const list = (orImport.listName || '').trim();
+      Object.assign(OR.leads, { offset: 0, allMatching: false, list_name: list && totals.imported ? list : OR.leads.list_name });
+      orRefreshLeadFacets(); // new industries/cities/list show up in the filters
+    } }],
   });
 }
 
@@ -1163,7 +1329,10 @@ async function orTabLeads() {
     body.innerHTML = `
       <div class="filters-bar">
         <span class="or-muted">${leads.length} lead${leads.length === 1 ? '' : 's'} · ${Object.entries(counts).map(([k, v]) => `${v} ${esc(k)}`).join(' · ') || 'none yet'}</span>
-        <button class="btn-secondary or-btn-sm" onclick="switchView('or-leads')">+ Add leads from Leads page</button>
+        <div class="filter-controls">
+          <button class="btn-secondary or-btn-sm" onclick="switchView('or-leads')">Pick on Leads page</button>
+          <button class="btn-primary or-btn-sm" onclick="orAddByFilterModal(${orCampaign.id})">+ Add leads by filter</button>
+        </div>
       </div>
       ${leads.length ? `
       <div class="table-wrap">
@@ -1406,8 +1575,7 @@ async function orTagReply(id, sentiment) {
 
 function orGoToLead(replyId) {
   OR.leads.search = OR.inbox.items.find(x => x.id === replyId)?.lead_email || '';
-  OR.leads.status = 'all';
-  OR.leads.offset = 0;
+  Object.assign(OR.leads, { status: 'all', industry: 'all', city: 'all', list_name: 'all', offset: 0, allMatching: false });
   const root = orRoot('leads');
   root.innerHTML = ''; // re-render shell with the search value
   switchView('or-leads');

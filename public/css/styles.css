@@ -3737,3 +3737,11 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
   .or-supp-add .search-input:focus { width: 100%; }
   .modal.or-modal-wide { max-width: 100%; }
 }
+
+/* Outreach lead segments */
+.or-bulkbar.is-idle { background: transparent; border-color: transparent; padding: 0 2px; justify-content: flex-start; gap: 6px; }
+.or-facet-select { max-width: 190px; }
+.or-list-chip { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-size: 12px; background: var(--blue-pastel); color: #0058d0; border-radius: 6px; padding: 1px 7px; }
+.or-abf-count { font-size: 15px; padding: 10px 12px; background: var(--bg); border-radius: 10px; margin-bottom: 8px; }
+.or-import-list { max-width: 460px; }
+@media (max-width: 768px) { .or-facet-select { max-width: none; flex: 1 1 140px; } }

@@ -269,25 +269,48 @@ router.post('/mailboxes/:id/resume', requireAuth, (req, res) => {
 
 // ── LEADS ────────────────────────────────────────────────────────────────────
 
-router.get('/leads', requireAuth, (req, res) => {
-  const { search, status, limit = 50, offset = 0 } = req.query;
-  let q = 'SELECT * FROM outreach_leads WHERE 1=1';
-  let countQ = 'SELECT COUNT(*) AS cnt FROM outreach_leads WHERE 1=1';
+// Segment filter shared by the leads list and "add by filter".
+// '__none__' matches leads with an empty value (e.g. no list).
+const NONE = '__none__';
+function leadFilter(f = {}) {
+  let where = '1=1';
   const params = [];
-  if (status && status !== 'all') {
-    q += ' AND status = ?'; countQ += ' AND status = ?'; params.push(status);
-  }
-  if (search) {
-    const clause = ' AND (company_name LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)';
-    q += clause; countQ += clause;
-    const s = `%${search}%`;
+  if (f.status && f.status !== 'all') { where += ' AND status = ?'; params.push(f.status); }
+  if (f.search) {
+    where += ' AND (company_name LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)';
+    const s = `%${f.search}%`;
     params.push(s, s, s, s);
   }
+  for (const col of ['industry', 'city', 'list_name']) {
+    const v = f[col];
+    if (v === undefined || v === null || v === '' || v === 'all') continue;
+    if (v === NONE) where += ` AND (${col} IS NULL OR ${col} = '')`;
+    else { where += ` AND ${col} = ?`; params.push(v); }
+  }
+  return { where, params };
+}
 
-  const total = db.prepare(countQ).get(...params).cnt;
-  q += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  const leads = db.prepare(q).all(...params, Number(limit), Number(offset));
+router.get('/leads', requireAuth, (req, res) => {
+  const { limit = 50, offset = 0 } = req.query;
+  const { where, params } = leadFilter(req.query);
+  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM outreach_leads WHERE ${where}`).get(...params).cnt;
+  const leads = db.prepare(`SELECT * FROM outreach_leads WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, Number(limit), Number(offset));
   res.json({ leads, total });
+});
+
+// GET /api/outreach/leads/facets — distinct industry / city / list values with counts
+router.get('/leads/facets', requireAuth, (req, res) => {
+  const facet = (col) => db.prepare(`
+    SELECT ${col} AS value, COUNT(*) AS count FROM outreach_leads
+    WHERE ${col} IS NOT NULL AND trim(${col}) != ''
+    GROUP BY ${col} ORDER BY ${col} COLLATE NOCASE
+  `).all();
+  const none = (col) => db.prepare(`SELECT COUNT(*) AS c FROM outreach_leads WHERE ${col} IS NULL OR trim(${col}) = ''`).get().c;
+  res.json({
+    industries: facet('industry'), cities: facet('city'), lists: facet('list_name'),
+    none: { industry: none('industry'), city: none('city'), list_name: none('list_name') },
+  });
 });
 
 router.post('/leads', requireAuth, (req, res) => {
@@ -338,6 +361,7 @@ router.post('/leads/import-csv', requireAuth, upload.single('file'), (req, res) 
 // duplicates (existing leads or repeated in the file) and suppressed emails.
 router.post('/leads/import', requireAuth, (req, res) => {
   const { rows } = req.body;
+  const listName = String(req.body.list_name ?? '').trim().slice(0, 200);
   if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows array required' });
   if (rows.length > 20000) return res.status(400).json({ error: 'max 20000 rows per import' });
 
@@ -345,8 +369,8 @@ router.post('/leads/import', requireAuth, (req, res) => {
   const existing = new Set(db.prepare("SELECT lower(email) AS e FROM outreach_leads WHERE email IS NOT NULL AND email != ''").all().map(r => r.e));
   const suppressed = new Set(db.prepare('SELECT lower(email) AS e FROM outreach_suppressions').all().map(r => r.e));
   const insert = db.prepare(`
-    INSERT INTO outreach_leads (company_name, first_name, last_name, email, phone, website, industry, city, country, status)
-    VALUES (?,?,?,?,?,?,?,?,?,'new')
+    INSERT INTO outreach_leads (company_name, first_name, last_name, email, phone, website, industry, city, country, list_name, status)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'new')
   `);
   const skipped = { invalid: 0, duplicate: 0, suppressed: 0 };
   let imported = 0;
@@ -359,7 +383,7 @@ router.post('/leads/import', requireAuth, (req, res) => {
       if (suppressed.has(email)) { skipped.suppressed++; continue; }
       if (existing.has(email)) { skipped.duplicate++; continue; }
       existing.add(email);
-      insert.run(...fields.map(k => (k === 'email' ? email : get(k))));
+      insert.run(...fields.map(k => (k === 'email' ? email : get(k))), listName);
       imported++;
     }
   })();
@@ -371,7 +395,7 @@ router.put('/leads/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id FROM outreach_leads WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  const fields = ['company_name', 'first_name', 'last_name', 'email', 'phone', 'website', 'industry', 'city', 'country', 'status'];
+  const fields = ['company_name', 'first_name', 'last_name', 'email', 'phone', 'website', 'industry', 'city', 'country', 'list_name', 'status'];
   const present = fields.filter(f => req.body[f] !== undefined);
   if (!present.length) return res.status(400).json({ error: 'nothing to update' });
   const setClause = present.map(f => `${f} = ?`).concat('updated_at = (datetime(\'now\'))').join(', ');
@@ -596,6 +620,36 @@ router.post('/campaigns/:id/leads', requireAuth, (req, res) => {
   });
   tx(lead_ids);
   res.json({ added, skipped });
+});
+
+// POST /api/outreach/campaigns/:id/leads-by-filter — body: { status, search, industry, city, list_name }
+// Adds every lead matching the filter, skipping leads already in the campaign
+// and suppressed emails. Runs entirely server-side (not limited to one page).
+router.post('/campaigns/:id/leads-by-filter', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!db.prepare('SELECT id FROM outreach_campaigns WHERE id = ?').get(id)) return res.status(404).json({ error: 'not found' });
+  const { where, params } = leadFilter(req.body || {});
+
+  const result = db.transaction(() => {
+    const matched = db.prepare(`SELECT COUNT(*) AS c FROM outreach_leads WHERE ${where}`).get(...params).c;
+    const already = db.prepare(`
+      SELECT COUNT(*) AS c FROM outreach_leads l WHERE ${where}
+        AND EXISTS (SELECT 1 FROM outreach_campaign_leads cl WHERE cl.campaign_id = ? AND cl.lead_id = l.id)
+    `).get(...params, id).c;
+    const suppressed = db.prepare(`
+      SELECT COUNT(*) AS c FROM outreach_leads l WHERE ${where}
+        AND NOT EXISTS (SELECT 1 FROM outreach_campaign_leads cl WHERE cl.campaign_id = ? AND cl.lead_id = l.id)
+        AND EXISTS (SELECT 1 FROM outreach_suppressions s WHERE lower(s.email) = lower(l.email))
+    `).get(...params, id).c;
+    const added = db.prepare(`
+      INSERT INTO outreach_campaign_leads (campaign_id, lead_id, status)
+      SELECT ?, l.id, 'pending' FROM outreach_leads l WHERE ${where}
+        AND NOT EXISTS (SELECT 1 FROM outreach_campaign_leads cl WHERE cl.campaign_id = ? AND cl.lead_id = l.id)
+        AND NOT EXISTS (SELECT 1 FROM outreach_suppressions s WHERE lower(s.email) = lower(l.email))
+    `).run(id, ...params, id).changes;
+    return { matched, added, skipped_existing: already, skipped_suppressed: suppressed };
+  })();
+  res.json(result);
 });
 
 router.delete('/campaigns/:id/leads/:leadId', requireAuth, (req, res) => {
