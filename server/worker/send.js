@@ -34,6 +34,15 @@ const countDomain   = (id, since, dry) => countSent('m.domain_id = ?', [id], sin
 const countCampaign = (id, since, dry) => countSent('q.campaign_id = ?', [id], since, dry);
 const countSystem   = (since, dry)     => countSent('1 = 1', [], since, dry);
 
+// Warmup emails sent by the mailbox (count toward its hourly limit only)
+function countWarmup(mailboxId, since, dry) {
+  return db.prepare(`
+    SELECT COUNT(*) AS c FROM outreach_warmup_messages
+    WHERE mailbox_id = ? AND direction = 'out' AND sent_at >= ?
+      AND (status = 'sent' OR (? = 1 AND status = 'dry_run'))
+  `).get(mailboxId, since, dry ? 1 : 0).c;
+}
+
 function effectiveDailyLimit(mb) {
   return mb.warmup_mode ? (mb.warmup_daily_limit ?? mb.warmup_start_limit) : mb.daily_limit;
 }
@@ -431,7 +440,7 @@ async function sendTick() {
 
     if (countSystem(hourAgo, dry) >= systemHourly) return;
     if (mb.domain_status && mb.domain_status !== 'active') continue;
-    if (countMailbox(mb.id, hourAgo, dry) >= (mb.hourly_limit ?? 0)) continue;
+    if (countMailbox(mb.id, hourAgo, dry) + countWarmup(mb.id, hourAgo, dry) >= (mb.hourly_limit ?? 0)) continue;
     if (countMailbox(mb.id, dayAgo, dry) >= (effectiveDailyLimit(mb) ?? 0)) continue;
     if (mb.domain_id && mb.domain_daily_limit != null && countDomain(mb.domain_id, dayAgo, dry) >= mb.domain_daily_limit) continue;
 
@@ -452,4 +461,4 @@ function recoverStuckSending() {
   if (r.changes) log('warn', `${r.changes} queue item(s) were stuck in 'sending' after restart — marked failed, not retried`);
 }
 
-module.exports = { sendTick, recoverStuckSending, checkBounceRate, checkDomainBounceRate, pauseMailbox };
+module.exports = { sendTick, recoverStuckSending, checkBounceRate, checkDomainBounceRate, pauseMailbox, countMailbox, countWarmup };

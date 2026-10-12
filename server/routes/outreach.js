@@ -209,45 +209,14 @@ router.delete('/mailboxes/:id', requireAuth, (req, res) => {
 router.post('/mailboxes/:id/test-smtp', requireAuth, async (req, res) => {
   const m = db.prepare('SELECT * FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
   if (!m) return res.status(404).json({ error: 'not found' });
-  if (!m.smtp_host) return res.json({ ok: false, error: 'SMTP host not set' });
-  const port = Number(m.smtp_port) || 587;
-  try {
-    const transporter = require('nodemailer').createTransport({
-      host: m.smtp_host, port, secure: port === 465,
-      auth: { user: m.smtp_user || m.email, pass: common.decrypt(m.smtp_pass) },
-      connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000,
-    });
-    await transporter.verify();
-    transporter.close();
-    res.json({ ok: true, message: `Connected and logged in to ${m.smtp_host}:${port}` });
-  } catch (err) {
-    res.json({ ok: false, error: err.message });
-  }
+  res.json(await common.testSmtpLogin(m));
 });
 
 // POST /api/outreach/mailboxes/:id/test-imap — connects + logs in + opens INBOX
 router.post('/mailboxes/:id/test-imap', requireAuth, async (req, res) => {
   const m = db.prepare('SELECT * FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
   if (!m) return res.status(404).json({ error: 'not found' });
-  if (!m.imap_host) return res.json({ ok: false, error: 'IMAP host not set' });
-  const port = Number(m.imap_port) || 993;
-  let client;
-  try {
-    const { ImapFlow } = require('imapflow');
-    client = new ImapFlow({
-      host: m.imap_host, port, secure: port === 993,
-      auth: { user: m.imap_user || m.email, pass: common.decrypt(m.imap_pass) },
-      logger: false, socketTimeout: 20000,
-    });
-    client.on('error', () => {});
-    await client.connect();
-    const box = await client.mailboxOpen('INBOX', { readOnly: true });
-    res.json({ ok: true, message: `Logged in to ${m.imap_host}:${port} — INBOX has ${box.exists} messages` });
-  } catch (err) {
-    res.json({ ok: false, error: err.responseText || err.message });
-  } finally {
-    if (client) await client.logout().catch(() => {});
-  }
+  res.json(await common.testImapLogin(m));
 });
 
 router.post('/mailboxes/:id/pause', requireAuth, (req, res) => {
@@ -851,9 +820,19 @@ router.get('/domain-health', requireAuth, (req, res) => {
     ) GROUP BY mailbox_id
   `);
 
+  // Warmup inbox placement (main deliverability metric), last 7 days
+  const placeSince = toSql(new Date(Date.now() - H.PLACEMENT_REPORT_DAYS * 86400000));
+  const placement = new Map(db.prepare(`
+    SELECT mailbox_id, SUM(landed_in = 'inbox') AS inbox, SUM(landed_in = 'spam') AS spam
+    FROM outreach_warmup_messages
+    WHERE direction = 'out' AND status = 'sent' AND sent_at >= ? AND landed_in IN ('inbox', 'spam')
+    GROUP BY mailbox_id
+  `).all(placeSince).map(r => [r.mailbox_id, r]));
+
   const rate = (b, s) => (s ? Math.round(b / s * 1000) / 10 : 0);
   const health = (pct, paused) => (paused || pct > H.BOUNCE_RATE_LIMIT * 100 ? 'paused' : pct >= H.BOUNCE_WATCH * 100 ? 'watch' : 'healthy');
   const stats = (id) => ({
+    placement_inbox: placement.get(id)?.inbox || 0, placement_spam: placement.get(id)?.spam || 0,
     sent: sent.get(id) || 0, bounced: bounced.get(id) || 0, replies: replies.get(id) || 0,
     positive: positive.get(id) || 0, unsubscribes: unsubs.get(id) || 0, smtp_errors: smtpErrors.get(id) || 0,
   });
@@ -862,14 +841,16 @@ router.get('/domain-health', requireAuth, (req, res) => {
     .map(m => {
       const s = stats(m.id);
       s.bounce_rate = rate(s.bounced, s.sent);
+      s.placement_rate = s.placement_inbox + s.placement_spam ? rate(s.placement_inbox, s.placement_inbox + s.placement_spam) : null;
       return { ...m, ...s, health: health(s.bounce_rate, m.status === 'paused') };
     });
 
   const group = (d) => {
     const boxes = mailboxes.filter(m => (d ? m.domain_id === d.id : !domainIds.has(m.domain_id)));
-    const t = { sent: 0, bounced: 0, replies: 0, positive: 0, unsubscribes: 0, smtp_errors: 0 };
+    const t = { sent: 0, bounced: 0, replies: 0, positive: 0, unsubscribes: 0, smtp_errors: 0, placement_inbox: 0, placement_spam: 0 };
     for (const m of boxes) for (const k of Object.keys(t)) t[k] += m[k];
     t.bounce_rate = rate(t.bounced, t.sent);
+    t.placement_rate = t.placement_inbox + t.placement_spam ? rate(t.placement_inbox, t.placement_inbox + t.placement_spam) : null;
     const allPaused = boxes.length > 0 && boxes.every(m => m.status === 'paused');
     return {
       id: d ? d.id : null, domain: d ? d.domain : 'No domain', status: d ? d.status : null, ...t,
@@ -884,7 +865,8 @@ router.get('/domain-health', requireAuth, (req, res) => {
 
   res.json({
     window_days: H.DOMAIN_WINDOW_DAYS,
-    thresholds: { watch: H.BOUNCE_WATCH * 100, pause: H.BOUNCE_RATE_LIMIT * 100, domain_min_sends: H.DOMAIN_MIN_SENDS },
+    thresholds: { watch: H.BOUNCE_WATCH * 100, pause: H.BOUNCE_RATE_LIMIT * 100, domain_min_sends: H.DOMAIN_MIN_SENDS, placement_min: H.PLACEMENT_MIN * 100 },
+    placement_days: H.PLACEMENT_REPORT_DAYS,
     domains: result,
   });
 });

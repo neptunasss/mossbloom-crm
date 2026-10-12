@@ -41,6 +41,7 @@ app.use('/api/invoices',  require('./routes/invoices'));
 app.use('/api/clients',   require('./routes/clients'));
 app.use('/api/todos',     require('./routes/todos'));
 app.use('/api/admin',     require('./routes/admin'));
+app.use('/api/outreach/warmup', require('./routes/outreach-warmup'));
 app.use('/api/outreach',  require('./routes/outreach'));
 
 // Public (no auth) — unsubscribe links from outreach emails

@@ -133,6 +133,7 @@ function orOnView(view) {
   if (view === 'or-inbox')        orLoadInbox(true);
   if (view === 'or-mailboxes')    orLoadMailboxes();
   if (view === 'or-suppressions') orLoadSuppressions();
+  if (view === 'or-warmup')       orLoadWarmup();
 }
 
 function orUpdateInboxBadge(n) {
@@ -179,6 +180,7 @@ function orRenderDomainHealth(health) {
   const t = health.thresholds;
   const cell = (label, value, tone = '') => `<div class="or-dh-stat ${tone}"><span>${value}</span><label>${label}</label></div>`;
   const rateTone = (r) => (r > t.pause ? 'is-bad' : r >= t.watch ? 'is-warn' : '');
+  const placementTone = (p) => (p === null ? '' : p < t.placement_min ? 'is-bad' : p < t.placement_min + 15 ? 'is-warn' : 'is-good');
 
   const cards = health.domains.map(d => `
     <div class="or-dh-card or-dh-${d.health}">
@@ -190,6 +192,7 @@ function orRenderDomainHealth(health) {
         ${orHealthBadge(d.health)}
       </div>
       <div class="or-dh-stats">
+        ${cell('Inbox placement', d.placement_rate === null ? '—' : `${d.placement_rate}%`, placementTone(d.placement_rate))}
         ${cell('Sent', d.sent)}
         ${cell('Bounced', d.bounced, d.bounced ? 'is-warn' : '')}
         ${cell('Bounce rate', `${d.bounce_rate}%`, rateTone(d.bounce_rate))}
@@ -201,12 +204,13 @@ function orRenderDomainHealth(health) {
       ${d.mailboxes.length ? `
       <div class="table-wrap or-flat or-dh-table">
         <table class="orders-table">
-          <thead><tr><th>Mailbox</th><th>Status</th><th class="text-right">Sent</th><th class="text-right">Bounced</th><th class="text-right">Rate</th>
+          <thead><tr><th>Mailbox</th><th>Status</th><th class="text-right">Placement</th><th class="text-right">Sent</th><th class="text-right">Bounced</th><th class="text-right">Rate</th>
             <th class="text-right">Replies</th><th class="text-right">Positive</th><th class="text-right">Unsubs</th><th class="text-right">SMTP err</th></tr></thead>
           <tbody>${d.mailboxes.map(m => `
             <tr title="${esc(m.pause_reason || '')}">
               <td class="col-customer">${esc(m.email)}</td>
               <td>${orHealthBadge(m.health)}</td>
+              <td class="text-right ${m.placement_rate !== null && m.placement_rate < t.placement_min ? 'or-err-text' : ''}">${m.placement_rate === null ? '—' : m.placement_rate + '%'}</td>
               <td class="text-right">${m.sent}</td>
               <td class="text-right">${m.bounced}</td>
               <td class="text-right ${m.bounce_rate > t.pause ? 'or-err-text' : ''}">${m.bounce_rate}%</td>
@@ -223,7 +227,7 @@ function orRenderDomainHealth(health) {
   return `
     <div class="or-section-head">
       <h3>Domain health</h3>
-      <span class="or-muted">last ${health.window_days} days · HEALTHY &lt; ${t.watch}% · WATCH ${t.watch}–${t.pause}% · PAUSED &gt; ${t.pause}% or paused</span>
+      <span class="or-muted">last ${health.window_days} days · inbox placement from warmup seeds · HEALTHY &lt; ${t.watch}% · WATCH ${t.watch}–${t.pause}% · PAUSED &gt; ${t.pause}% or paused</span>
     </div>
     <div class="or-dh-grid">${cards}</div>`;
 }
@@ -1726,6 +1730,258 @@ async function orRemoveSuppression(id) {
   const s = OR.suppressions.find(x => x.id === id);
   if (!await orConfirm('Remove from suppressions?', `<p><strong>${esc(s?.email)}</strong> could be contacted again by future campaigns. The lead's status is not changed.</p>`, { okLabel: 'Remove', danger: true })) return;
   try { await api(`/api/outreach/suppressions/${id}`, { method: 'DELETE' }); toast('Removed'); orLoadSuppressions(); }
+  catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 7. WARMUP (seed inboxes)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let orWarmup = null;
+
+function orPlacementTone(p, min) {
+  if (p === null || p === undefined) return '';
+  return p < min ? 'or-kpi-bad' : p < min + 15 ? 'or-kpi-warn' : 'or-kpi-good';
+}
+
+async function orLoadWarmup() {
+  const root = orRoot('warmup');
+  if (!root.innerHTML) root.innerHTML = '<div class="or-loading">Loading…</div>';
+  try {
+    orWarmup = await api('/api/outreach/warmup');
+    orRenderWarmup();
+  } catch (err) {
+    root.innerHTML = `<div class="or-error">Failed to load: ${esc(err.message)}</div>`;
+  }
+}
+
+function orRenderWarmup() {
+  const W = orWarmup;
+  const on = W.settings.warmup_enabled;
+  const t = W.thresholds;
+  const fmtPct = (p) => (p === null || p === undefined ? '—' : `${p}%`);
+
+  const domainCards = W.domains.map(d => `
+    <div class="prod-stat-card or-kpi ${orPlacementTone(d.placement, t.placement_min)}">
+      <span class="prod-stat-label">${esc(d.domain)}</span>
+      <span class="prod-stat-value">${fmtPct(d.placement)}</span>
+      <span class="prod-stat-name">${d.inbox} inbox · ${d.spam} spam · ${d.sent} sent</span>
+    </div>`).join('');
+
+  const mbRows = W.mailboxes.map(m => {
+    const ramp = !m.seed_warmup_enabled ? '<span class="or-muted">off</span>'
+      : m.ramp_day < m.ramp_days
+        ? `<div class="or-warm-cell"><div class="or-progress"><div style="width:${Math.round(m.ramp_day / m.ramp_days * 100)}%"></div></div><span class="or-muted">day ${m.ramp_day}/${m.ramp_days}</span></div>`
+        : '<span class="or-muted">steady ~15/day</span>';
+    return `<tr>
+      <td class="col-customer">${esc(m.email)}<div class="or-muted">${esc(m.domain || 'no domain')}${m.status === 'paused' ? ' · campaigns paused' : ''}</div></td>
+      <td>
+        <label class="or-switch or-switch-sm" title="Warmup for this mailbox">
+          <input type="checkbox" ${m.seed_warmup_enabled ? 'checked' : ''} onchange="orToggleMailboxWarmup(${m.id}, this.checked)">
+          <span class="or-switch-track"></span>
+        </label>
+      </td>
+      <td class="text-right">${m.seed_warmup_enabled ? `${m.today} / ${m.target_today}` : '—'}</td>
+      <td>${ramp}</td>
+      <td class="text-right">${m.sent}${m.failed ? ` <span class="or-err-text" title="failed sends">(${m.failed}✗)</span>` : ''}</td>
+      <td class="text-right ${m.inbox_pct !== null && m.inbox_pct < t.placement_min ? 'or-err-text' : ''}">${fmtPct(m.inbox_pct)}</td>
+      <td class="text-right">${fmtPct(m.spam_pct)}</td>
+      <td class="text-right">${m.rescued}</td>
+      <td class="text-right">${m.replies}</td>
+    </tr>`;
+  }).join('');
+
+  const seedRows = W.seeds.map(s => {
+    const paused = s.status !== 'active';
+    return `
+      <div class="or-mb-row">
+        <div class="or-mb-main">
+          <div class="or-mb-email">${esc(s.email)} ${orBadge(s.status === 'error' ? 'failed' : s.status)}
+            <span class="or-list-chip">${s.provider === 'gmail' ? 'Gmail' : 'Other'}</span>
+            ${s.can_automate ? '<span class="or-list-chip">auto-engage</span>' : '<span class="or-muted">manual</span>'}
+          </div>
+          <div class="or-muted">received ${s.received_14} warmup emails in ${W.stats_days} days · last checked ${s.last_check_at ? orAgo(s.last_check_at) : 'never'}</div>
+          ${s.last_error ? `<div class="or-err-text or-mb-reason">${esc(s.last_error)}</div>` : ''}
+          <div class="or-test-result" id="or-seed-test-${s.id}"></div>
+        </div>
+        <div class="or-mb-actions">
+          <button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'smtp')">Test SMTP</button>
+          <button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'imap')">Test IMAP</button>
+          <button class="btn-secondary or-btn-sm" onclick="orSeedPause(${s.id}, ${paused})">${paused ? 'Resume' : 'Pause'}</button>
+          <button class="btn-row-action" title="Edit" onclick="orEditSeed(${s.id})"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+          <button class="btn-row-action btn-row-delete" title="Delete" onclick="orDeleteSeed(${s.id})"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+        </div>
+      </div>`;
+  }).join('');
+
+  orRoot('warmup').innerHTML = `
+    <div class="or-topbar ${on ? '' : 'is-off'}">
+      <div class="or-topbar-state">
+        <span class="or-state-dot"></span>
+        <div>
+          <div class="or-state-title">${on ? 'Warmup is ON' : 'Warmup is OFF'}</div>
+          <div class="or-state-sub">Every day 08:00–20:00 Vilnius · ramps 2 → 15/day over 21 days · separate from the outreach pause</div>
+        </div>
+        ${W.settings.dry_run ? '<span class="or-dry-badge" title="Warmup respects dry run: logged, not sent">DRY RUN</span>' : ''}
+      </div>
+      <div class="or-topbar-actions">
+        <label class="or-switch" title="Global warmup switch">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="orToggleWarmup(this)">
+          <span class="or-switch-track"></span>
+          <span>Warmup</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="or-section-head">
+      <h3>Inbox placement</h3>
+      <span class="or-muted">last ${t.report_days} days · share of warmup emails that reached the seed's inbox · campaigns on a domain auto-pause below ${t.placement_min}% over ${t.placement_window_days} days</span>
+    </div>
+    ${domainCards ? `<div class="or-kpi-grid">${domainCards}</div>` : '<div class="or-empty">No domains yet.</div>'}
+
+    <div class="or-card">
+      <div class="or-card-head">
+        <h3>Mailboxes</h3>
+        <span class="or-muted">last ${W.stats_days} days</span>
+      </div>
+      ${W.mailboxes.length ? `
+      <div class="table-wrap or-flat">
+        <table class="orders-table">
+          <thead><tr><th>Mailbox</th><th>Warmup</th><th class="text-right">Today</th><th>Ramp</th><th class="text-right">Sent</th>
+            <th class="text-right">Inbox</th><th class="text-right">Spam</th><th class="text-right">Rescued</th><th class="text-right">Replies</th></tr></thead>
+          <tbody>${mbRows}</tbody>
+        </table>
+      </div>` : '<div class="or-empty">No mailboxes yet.</div>'}
+    </div>
+
+    <div class="or-card">
+      <div class="or-card-head">
+        <div>
+          <h3>Seed inboxes</h3>
+          <span class="or-muted">Inboxes you own. Warmup emails go only to these — never to leads or suppressed addresses.</span>
+        </div>
+        <button class="btn-primary or-btn-sm" onclick="orEditSeed(null)">+ Seed</button>
+      </div>
+      ${seedRows || '<div class="or-empty">No seeds yet. Add a few inboxes you own (Gmail and others) so warmup has somewhere to send.</div>'}
+    </div>`;
+  orIcons();
+}
+
+async function orToggleWarmup(input) {
+  const want = input.checked;
+  input.checked = !want;
+  if (want && !orWarmup.seeds.some(s => s.status === 'active')) {
+    if (!await orConfirm('Turn on warmup?', '<p>There are no active seed inboxes yet, so nothing will be sent until you add one.</p>', { okLabel: 'Turn on anyway' })) return;
+  }
+  try {
+    await api('/api/outreach/warmup/toggle', { method: 'POST', body: JSON.stringify({ enabled: want }) });
+    toast(want ? 'Warmup ON' : 'Warmup OFF');
+    orLoadWarmup();
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function orToggleMailboxWarmup(id, enabled) {
+  try {
+    await api(`/api/outreach/warmup/mailboxes/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+    toast(enabled ? 'Warmup enabled for mailbox' : 'Warmup disabled for mailbox');
+    orLoadWarmup();
+  } catch (err) { toast('Error: ' + err.message, 'error'); orLoadWarmup(); }
+}
+
+async function orTestSeed(id, kind) {
+  const el = document.getElementById(`or-seed-test-${id}`);
+  el.className = 'or-test-result is-loading';
+  el.textContent = `Testing ${kind.toUpperCase()}…`;
+  try {
+    const r = await api(`/api/outreach/warmup/seeds/${id}/test-${kind}`, { method: 'POST' });
+    el.className = `or-test-result ${r.ok ? 'is-ok' : 'is-err'}`;
+    el.textContent = `${kind.toUpperCase()}: ${r.ok ? '✓ ' + (r.message || 'OK') : '✗ ' + r.error}`;
+  } catch (err) {
+    el.className = 'or-test-result is-err';
+    el.textContent = `${kind.toUpperCase()}: ✗ ${err.message}`;
+  }
+}
+
+async function orSeedPause(id, isPaused) {
+  try {
+    await api(`/api/outreach/warmup/seeds/${id}/${isPaused ? 'resume' : 'pause'}`, { method: 'POST' });
+    toast(isPaused ? 'Seed active' : 'Seed paused');
+    orLoadWarmup();
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+function orSeedProviderChanged(sel) {
+  if (sel.value !== 'gmail') return;
+  const form = document.getElementById('or-seed-form');
+  const defaults = { smtp_host: 'smtp.gmail.com', smtp_port: '465', imap_host: 'imap.gmail.com', imap_port: '993' };
+  for (const [k, v] of Object.entries(defaults)) {
+    const el = form.querySelector(`[name=${k}]`);
+    if (el && !el.value) el.value = v;
+  }
+}
+
+function orEditSeed(id) {
+  const s = orWarmup.seeds.find(x => x.id === id) || { email: '', provider: 'gmail', smtp_host: '', smtp_port: '', smtp_user: '', imap_host: '', imap_port: '', imap_user: '', can_automate: 1 };
+  orModal({
+    title: id ? `Edit seed ${s.email}` : 'New seed inbox',
+    wide: true,
+    body: `<div id="or-seed-form">
+      <div class="form-row">
+        <div class="form-group"><label>Email *</label><input name="email" type="email" value="${esc(s.email)}"></div>
+        <div class="form-group"><label>Provider</label>
+          <select name="provider" onchange="orSeedProviderChanged(this)">
+            <option value="gmail" ${s.provider === 'gmail' ? 'selected' : ''}>Gmail</option>
+            <option value="other" ${s.provider !== 'gmail' ? 'selected' : ''}>Other</option>
+          </select>
+        </div>
+      </div>
+      <p class="or-muted">Gmail: turn on IMAP and use an app password (Google Account → Security → App passwords).</p>
+
+      <div class="or-form-section">SMTP (for replies)</div>
+      <div class="form-row">
+        <div class="form-group"><label>Host</label><input name="smtp_host" value="${esc(s.smtp_host || '')}" placeholder="smtp.gmail.com"></div>
+        <div class="form-group"><label>Port</label><input name="smtp_port" type="number" value="${s.smtp_port ?? ''}" placeholder="465"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Username</label><input name="smtp_user" value="${esc(s.smtp_user || '')}" placeholder="defaults to email"></div>
+        ${orPassField('smtp_pass', 'Password', id && s.has_smtp_pass)}
+      </div>
+
+      <div class="or-form-section">IMAP (find, rescue from spam, read)</div>
+      <div class="form-row">
+        <div class="form-group"><label>Host</label><input name="imap_host" value="${esc(s.imap_host || '')}" placeholder="imap.gmail.com"></div>
+        <div class="form-group"><label>Port</label><input name="imap_port" type="number" value="${s.imap_port ?? ''}" placeholder="993"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Username</label><input name="imap_user" value="${esc(s.imap_user || '')}" placeholder="defaults to email"></div>
+        ${orPassField('imap_pass', 'Password', id && s.has_imap_pass)}
+      </div>
+      <label class="or-check"><input type="checkbox" name="can_automate" ${s.can_automate ? 'checked' : ''}> Automate engagement (open, rescue from spam, star, reply)</label>
+    </div>`,
+    buttons: [
+      { label: 'Cancel', onClick: orCloseModal },
+      { label: 'Save seed', cls: 'btn-primary', onClick: () => orSaveSeed(id) },
+    ],
+  });
+  if (!id) orSeedProviderChanged(document.querySelector('#or-seed-form [name=provider]'));
+}
+
+async function orSaveSeed(id) {
+  const v = orFormValues(document.getElementById('or-seed-form'));
+  if (!v.email.trim()) return toast('Email is required', 'error');
+  const body = { ...v, email: v.email.trim(), can_automate: !!v.can_automate };
+  if (!v.smtp_pass) delete body.smtp_pass;
+  if (!v.imap_pass) delete body.imap_pass;
+  try {
+    await api(id ? `/api/outreach/warmup/seeds/${id}` : '/api/outreach/warmup/seeds', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    orCloseModal(); toast('Seed saved'); orLoadWarmup();
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function orDeleteSeed(id) {
+  const s = orWarmup.seeds.find(x => x.id === id);
+  if (!await orConfirm('Delete seed?', `<p>Delete <strong>${esc(s?.email)}</strong>? Warmup stops sending to it. History is kept.</p>`, { okLabel: 'Delete', danger: true })) return;
+  try { await api(`/api/outreach/warmup/seeds/${id}`, { method: 'DELETE' }); toast('Seed deleted'); orLoadWarmup(); }
   catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 

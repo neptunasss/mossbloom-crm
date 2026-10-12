@@ -15,6 +15,10 @@ const HEALTH = {
   BOUNCE_WATCH: 0.02,           // 2–3% → WATCH badge on the dashboard
   DOMAIN_WINDOW_DAYS: 7,        // domain: bounce rate over the last 7 days…
   DOMAIN_MIN_SENDS: 30,         // …judged once the domain has 30+ sends
+  PLACEMENT_MIN: 0.70,          // warmup inbox placement < 70%…
+  PLACEMENT_WINDOW_DAYS: 3,     // …over 3 days → pause campaigns on the domain
+  PLACEMENT_MIN_SAMPLES: 10,    // …once 10+ warmup emails have a known placement
+  PLACEMENT_REPORT_DAYS: 7,     // dashboard "Inbox placement %" window
 };
 
 // ── Encryption (AES-256-GCM) for smtp_pass / imap_pass ──────────────────────
@@ -175,8 +179,51 @@ const stopLead = db.transaction((leadId, status, { suppress = false, reason = st
   return cancelLeadQueue(leadId, `lead ${status}`);
 });
 
+// ── SMTP / IMAP login tests (mailboxes + warmup seeds) ──────────────────────
+// cfg: { email, smtp_host, smtp_port, smtp_user, smtp_pass(encrypted), imap_* }
+
+async function testSmtpLogin(cfg) {
+  if (!cfg.smtp_host) return { ok: false, error: 'SMTP host not set' };
+  const port = Number(cfg.smtp_port) || 587;
+  try {
+    const transporter = require('nodemailer').createTransport({
+      host: cfg.smtp_host, port, secure: port === 465,
+      auth: { user: cfg.smtp_user || cfg.email, pass: decrypt(cfg.smtp_pass) },
+      connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000,
+    });
+    await transporter.verify();
+    transporter.close();
+    return { ok: true, message: `Connected and logged in to ${cfg.smtp_host}:${port}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function testImapLogin(cfg) {
+  if (!cfg.imap_host) return { ok: false, error: 'IMAP host not set' };
+  const port = Number(cfg.imap_port) || 993;
+  let client;
+  try {
+    const { ImapFlow } = require('imapflow');
+    client = new ImapFlow({
+      host: cfg.imap_host, port, secure: port === 993,
+      auth: { user: cfg.imap_user || cfg.email, pass: decrypt(cfg.imap_pass) },
+      logger: false, socketTimeout: 20000,
+    });
+    client.on('error', () => {});
+    await client.connect();
+    const box = await client.mailboxOpen('INBOX', { readOnly: true });
+    return { ok: true, message: `Logged in to ${cfg.imap_host}:${port} — INBOX has ${box.exists} messages` };
+  } catch (err) {
+    return { ok: false, error: err.responseText || err.message };
+  } finally {
+    if (client) await client.logout().catch(() => {});
+  }
+}
+
 module.exports = {
   HEALTH,
+  testSmtpLogin, testImapLogin,
   encrypt, decrypt, isEncrypted, encryptExistingMailboxPasswords,
   signLeadToken, verifyLeadToken, publicBaseUrl,
   getSetting, setSetting, workerLog,

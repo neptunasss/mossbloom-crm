@@ -544,6 +544,59 @@ try { db.exec('ALTER TABLE outreach_replies ADD COLUMN message_id TEXT'); } catc
 try { db.exec('ALTER TABLE outreach_replies ADD COLUMN deal_id INTEGER'); } catch {}
 try { db.exec("ALTER TABLE outreach_leads ADD COLUMN list_name TEXT DEFAULT ''"); } catch {}
 
+// Warmup (seed inboxes) — per-mailbox switch + pacing on outreach_mailboxes
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN seed_warmup_enabled INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN seed_warmup_started_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN next_warmup_at TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN warmup_smtp_errors INTEGER DEFAULT 0'); } catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_warmup_seeds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    provider TEXT DEFAULT 'other',
+    smtp_host TEXT, smtp_port INTEGER, smtp_user TEXT, smtp_pass TEXT,
+    imap_host TEXT, imap_port INTEGER, imap_user TEXT, imap_pass TEXT,
+    can_automate INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'active',
+    last_error TEXT,
+    last_check_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+} catch {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS outreach_warmup_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mailbox_id INTEGER,
+    seed_id INTEGER,
+    direction TEXT NOT NULL,
+    subject TEXT,
+    message_id TEXT,
+    in_reply_to TEXT,
+    references_header TEXT,
+    code TEXT,
+    status TEXT DEFAULT 'sent',
+    error TEXT,
+    sent_at TEXT,
+    landed_in TEXT DEFAULT 'unknown',
+    rescued_from_spam INTEGER DEFAULT 0,
+    flagged INTEGER DEFAULT 0,
+    opened_at TEXT,
+    replied_at TEXT,
+    reply_planned INTEGER,
+    reply_due_at TEXT,
+    continue_due_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_wu_msg_mailbox_sent ON outreach_warmup_messages(mailbox_id, direction, sent_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_wu_msg_code ON outreach_warmup_messages(code)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_wu_msg_message_id ON outreach_warmup_messages(message_id)');
+} catch {}
+try {
+  db.prepare("INSERT OR IGNORE INTO outreach_system_settings (key, value) VALUES ('warmup_enabled', 'false')").run();
+} catch {}
+
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS outreach_worker_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

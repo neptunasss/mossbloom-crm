@@ -10,6 +10,7 @@ const db     = require('../database');
 const common = require('../services/outreach-common');
 const { sendTick, recoverStuckSending } = require('./send');
 const { imapTick } = require('./imap');
+const { warmupTick, seedTick } = require('./warmup');
 const { localDate } = require('./time');
 
 const { workerLog: log, getSetting, setSetting } = common;
@@ -59,6 +60,7 @@ function runMaintenance() {
 // ── Scheduling ───────────────────────────────────────────────────────────────
 
 let sending = false;
+let warmingUp = false;
 let stopping = false;
 const timers = [];
 
@@ -77,11 +79,17 @@ const sendLoop = guard('send loop', async () => {
   try { await sendTick(); } finally { sending = false; }
 });
 const imapLoop  = guard('IMAP check', imapTick);
+const warmupLoop = guard('warmup send', async () => {
+  if (warmingUp) return;
+  warmingUp = true;
+  try { await warmupTick(); } finally { warmingUp = false; }
+});
+const seedLoop = guard('warmup seeds', seedTick);
 const dailyLoop = guard('daily jobs', () => { runWarmup(); runMaintenance(); });
 
 function start() {
   const dry = getSetting('dry_run', 'true') !== 'false';
-  log('info', `worker started (pid ${process.pid}) — dry_run=${dry}, global_paused=${getSetting('global_paused', 'false')}`);
+  log('info', `worker started (pid ${process.pid}) — dry_run=${dry}, global_paused=${getSetting('global_paused', 'false')}, warmup=${getSetting('warmup_enabled', 'false')}`);
   if (!process.env.ENCRYPTION_KEY) {
     log('warn', 'ENCRYPTION_KEY not set — mailbox passwords cannot be decrypted, live sending and IMAP disabled');
   } else {
@@ -97,6 +105,10 @@ function start() {
   timers.push(setInterval(sendLoop, 60000));
   timers.push(setTimeout(imapLoop, 15000));
   timers.push(setInterval(imapLoop, 60000));
+  timers.push(setTimeout(warmupLoop, 25000));
+  timers.push(setInterval(warmupLoop, 60000));
+  timers.push(setTimeout(seedLoop, 40000));
+  timers.push(setInterval(seedLoop, 60000));
   timers.push(setInterval(dailyLoop, 10 * 60000));
 }
 
@@ -107,7 +119,7 @@ function shutdown(reason) {
   log('info', `worker stopping (${reason})`);
   // Let an in-flight SMTP send finish so its row isn't left in 'sending'
   const wait = setInterval(() => {
-    if (!sending) { clearInterval(wait); process.exit(0); }
+    if (!sending && !warmingUp) { clearInterval(wait); process.exit(0); }
   }, 200);
   setTimeout(() => process.exit(0), 20000).unref();
 }

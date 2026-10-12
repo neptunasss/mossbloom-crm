@@ -5,6 +5,7 @@ const { simpleParser } = require('mailparser');
 const db               = require('../database');
 const common           = require('../services/outreach-common');
 const { checkBounceRate } = require('./send');
+const warmup           = require('./warmup');
 const { toSql }        = require('./time');
 
 const { workerLog: log } = common;
@@ -193,7 +194,15 @@ async function checkMailbox(mb) {
 
         let result;
         try {
-          result = handleMessage(mb, parsed, raw, msg.internalDate);
+          // Warmup traffic is handled first and hidden in the "Warmup" folder:
+          // it must never become an outreach reply, bounce or campaign stat.
+          const warmupResult = warmup.classifyIncoming(mb, parsed, raw);
+          if (warmupResult) {
+            result = warmupResult;
+            await warmup.hideInWarmupFolder(client, msg.uid, mb.id);
+          } else {
+            result = handleMessage(mb, parsed, raw, msg.internalDate);
+          }
         } catch (err) {
           result = 'error';
           log('error', `failed to process message uid ${msg.uid}: ${err.message}`, mb.id);

@@ -3773,3 +3773,14 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
 .or-health-paused { background: var(--red); color: #fff; }
 @media (max-width: 900px) { .or-dh-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .or-dh-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Outreach warmup */
+.or-dh-stats { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.or-dh-stat:first-child { background: var(--blue-pastel); }
+.or-topbar.is-off .or-state-dot { background: var(--text-muted); box-shadow: 0 0 0 4px rgba(0,0,0,0.06); }
+.or-switch-sm .or-switch-track { width: 32px; height: 19px; }
+.or-switch-sm .or-switch-track::after { width: 15px; height: 15px; }
+.or-switch-sm input:checked + .or-switch-track::after { transform: translateX(13px); }
+.or-switch-sm input:checked + .or-switch-track { background: var(--green); }
+@media (max-width: 900px) { .or-dh-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .or-dh-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

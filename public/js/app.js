@@ -62,7 +62,7 @@ function switchView(view) {
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
   const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai', 'inv-create': 'Nauja sąskaita', todos: 'Užduotys',
-    'or-dashboard': 'Outreach', 'or-campaigns': 'Campaigns', 'or-leads': 'Leads', 'or-inbox': 'Inbox', 'or-mailboxes': 'Mailboxes', 'or-suppressions': 'Suppressions' };
+    'or-dashboard': 'Outreach', 'or-campaigns': 'Campaigns', 'or-leads': 'Leads', 'or-inbox': 'Inbox', 'or-mailboxes': 'Mailboxes', 'or-warmup': 'Warmup', 'or-suppressions': 'Suppressions' };
   const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '', invoices: '', clients: '', 'inv-create': '', todos: '' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.getElementById('page-subtitle').textContent = subtitles[view] || '';

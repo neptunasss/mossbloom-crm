@@ -56,6 +56,26 @@ function localWeekStart(date = new Date()) {
   return localDayStart(date, localParts(date).weekdayIndex);
 }
 
+// Warmup runs every day (weekends too), 08:00–20:00 Vilnius
+const WARMUP_START_HOUR = 8;
+const WARMUP_END_HOUR = 20;
+
+function inWarmupWindow(date = new Date()) {
+  const p = localParts(date);
+  return p.hour >= WARMUP_START_HOUR && p.hour < WARMUP_END_HOUR;
+}
+
+// Today's 20:00 Vilnius (end of the warmup window)
+function warmupWindowEnd(date = new Date()) {
+  return new Date(localDayStart(date).getTime() + WARMUP_END_HOUR * 3600000);
+}
+
+// Next 08:00 Vilnius after date
+function nextWarmupWindowStart(date = new Date()) {
+  const todayStart = new Date(localDayStart(date).getTime() + WARMUP_START_HOUR * 3600000);
+  return date < todayStart ? todayStart : new Date(todayStart.getTime() + 86400000);
+}
+
 function toSql(date) {
   return date.toISOString().replace('T', ' ').slice(0, 19);
 }
@@ -64,4 +84,7 @@ function fromSql(s) {
   return new Date(s.replace(' ', 'T') + 'Z');
 }
 
-module.exports = { inSendWindow, nextSendWindow, localDate, localDayStart, localWeekStart, toSql, fromSql };
+module.exports = {
+  inSendWindow, nextSendWindow, localDate, localDayStart, localWeekStart, toSql, fromSql,
+  inWarmupWindow, warmupWindowEnd, nextWarmupWindowStart,
+};
