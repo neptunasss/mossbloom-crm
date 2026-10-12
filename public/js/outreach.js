@@ -1147,7 +1147,7 @@ async function orPreviewStep(i, leadId) {
           <div class="or-preview-meta"><span class="or-muted">To</span> ${esc(p.lead.email)}</div>
           <div class="or-preview-meta"><span class="or-muted">Subject</span> <strong>${esc(p.subject)}</strong></div>
           <div class="or-preview-body">${esc(p.text)}</div>
-          <div class="or-preview-foot">--<br>Nebenorite gauti šių laiškų? Atsisakyti: https://…/u/…</div>
+          <div class="or-preview-foot">Nebenorite gauti šių laiškų? <a href="#" onclick="return false" class="or-link" title="Links to this lead's personal unsubscribe page">Atsisakyti</a></div>
         </div>`,
       buttons: [{ label: 'Close', cls: 'btn-primary', onClick: orCloseModal }],
     });

@@ -163,16 +163,25 @@ function preSendCheck(item) {
   return null;
 }
 
+// Plain text → minimal HTML: escaped, line breaks kept, bare URLs clickable
+function textToHtml(text) {
+  const body = escapeHtml(text)
+    .replace(/https?:\/\/[^\s<]+/g, (url) => `<a href="${url}">${url}</a>`)
+    .replace(/\r?\n/g, '<br>\n');
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222">${body}</div>`;
+}
+
 function buildMessage(item, mb, lead, seq, unsubUrl) {
   const baseSubject = render(seq.subject, lead, false);
   const subject = item.subject || baseSubject;
   let text = seq.body_text ? render(seq.body_text, lead, false) : htmlToText(render(seq.body_html, lead, false));
-  let html = seq.body_html ? render(seq.body_html, lead, true) : null;
+  // Text-only steps (what the UI editor saves) still get an HTML part, so the
+  // footer can show a short linked word instead of the raw unsubscribe URL.
+  let html = seq.body_html ? render(seq.body_html, lead, true) : textToHtml(text);
 
+  // Full URL only in the plain-text version
   text += `\n\n--\nNebenorite gauti šių laiškų? Atsisakyti: ${unsubUrl}`;
-  if (html) {
-    html += `<p style="font-size:12px;color:#888;margin-top:24px">Nebenorite gauti šių laiškų? <a href="${escapeHtml(unsubUrl)}">Atsisakyti</a></p>`;
-  }
+  html += `<p style="font-size:12px;color:#888;margin-top:24px">Nebenorite gauti šių laiškų? <a href="${escapeHtml(unsubUrl)}">Atsisakyti</a></p>`;
 
   const domain = mb.email.split('@')[1] || 'localhost';
   return {
