@@ -1,4 +1,4 @@
-const CACHE = 'mossbloom-v1';
+const CACHE = 'mossbloom-v2';
 const PRECACHE = [
   '/',
   '/css/styles.css',

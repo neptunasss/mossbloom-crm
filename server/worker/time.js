@@ -20,6 +20,7 @@ function localParts(date) {
     hour: parseInt(p.hour, 10),
     minute: parseInt(p.minute, 10),
     weekend: p.weekday === 'Sat' || p.weekday === 'Sun',
+    weekdayIndex: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(p.weekday),
   };
 }
 
@@ -43,6 +44,18 @@ function localDate(date = new Date()) {
   return localParts(date).date;
 }
 
+// UTC instant of 00:00 Vilnius time today (or N days earlier)
+function localDayStart(date = new Date(), daysBack = 0) {
+  const p = localParts(date);
+  const ms = date.getTime() - (p.hour * 60 + p.minute) * 60000 - date.getUTCSeconds() * 1000 - date.getUTCMilliseconds();
+  return new Date(ms - daysBack * 86400000);
+}
+
+// UTC instant of Monday 00:00 Vilnius time this week
+function localWeekStart(date = new Date()) {
+  return localDayStart(date, localParts(date).weekdayIndex);
+}
+
 function toSql(date) {
   return date.toISOString().replace('T', ' ').slice(0, 19);
 }
@@ -51,4 +64,4 @@ function fromSql(s) {
   return new Date(s.replace(' ', 'T') + 'Z');
 }
 
-module.exports = { inSendWindow, nextSendWindow, localDate, toSql, fromSql };
+module.exports = { inSendWindow, nextSendWindow, localDate, localDayStart, localWeekStart, toSql, fromSql };

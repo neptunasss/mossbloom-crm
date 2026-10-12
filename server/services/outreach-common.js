@@ -115,6 +115,30 @@ function workerLog(level, message, mailboxId = null) {
   if (level === 'error') console.error(line); else console.log(line);
 }
 
+// ── Template rendering (worker + UI preview) ────────────────────────────────
+
+const escapeHtml = (s) => String(s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// {{first_name}}, {{company_name}}, {{city}}; fallback per use: {{first_name|Sveiki}}
+// or globally via outreach_system_settings key fallback_<token>.
+function render(tpl, lead, html) {
+  return String(tpl || '').replace(/\{\{\s*(first_name|company_name|city)\s*(?:\|([^}]*))?\}\}/g, (_, key, fb) => {
+    let v = String(lead[key] || '').trim();
+    if (!v) v = fb !== undefined ? fb.trim() : getSetting(`fallback_${key}`, '');
+    return html ? escapeHtml(v) : v;
+  });
+}
+
+function htmlToText(html) {
+  return String(html)
+    .replace(/<(br|\/p|\/div|\/h\d|\/li)\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ── Lead stop events (reply / unsubscribe / bounce) ─────────────────────────
 
 // Cancels ALL pending queue items for the lead across every campaign.
@@ -143,5 +167,6 @@ module.exports = {
   encrypt, decrypt, isEncrypted, encryptExistingMailboxPasswords,
   signLeadToken, verifyLeadToken, publicBaseUrl,
   getSetting, setSetting, workerLog,
+  render, htmlToText, escapeHtml,
   cancelLeadQueue, stopLead,
 };

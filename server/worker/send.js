@@ -6,7 +6,7 @@ const db         = require('../database');
 const common     = require('../services/outreach-common');
 const { inSendWindow, nextSendWindow, toSql } = require('./time');
 
-const { workerLog: log, getSetting } = common;
+const { workerLog: log, getSetting, render, htmlToText, escapeHtml } = common;
 
 const SENDABLE_MAILBOX = ['active', 'warmup'];
 const STOPPED_LEAD     = ['replied', 'bounced', 'unsubscribed'];
@@ -161,30 +161,6 @@ function preSendCheck(item) {
   const reply = db.prepare('SELECT is_bounce FROM outreach_replies WHERE lead_id = ? LIMIT 1').get(item.lead_id);
   if (reply) return reply.is_bounce ? 'lead bounced' : 'lead replied';
   return null;
-}
-
-// ── Rendering ────────────────────────────────────────────────────────────────
-
-const escapeHtml = (s) => String(s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-// {{first_name}}, {{company_name}}, {{city}}; fallback per use: {{first_name|Sveiki}}
-// or globally via outreach_system_settings key fallback_<token>.
-function render(tpl, lead, html) {
-  return String(tpl || '').replace(/\{\{\s*(first_name|company_name|city)\s*(?:\|([^}]*))?\}\}/g, (_, key, fb) => {
-    let v = String(lead[key] || '').trim();
-    if (!v) v = fb !== undefined ? fb.trim() : getSetting(`fallback_${key}`, '');
-    return html ? escapeHtml(v) : v;
-  });
-}
-
-function htmlToText(html) {
-  return String(html)
-    .replace(/<(br|\/p|\/div|\/h\d|\/li)\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 function buildMessage(item, mb, lead, seq, unsubUrl) {

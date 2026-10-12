@@ -61,7 +61,8 @@ function switchView(view) {
   document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
 
-  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai', 'inv-create': 'Nauja sąskaita', todos: 'Užduotys' };
+  const titles    = { orders: 'Orders', deals: 'Sandoriai', accounting: 'Dashboard', products: 'Products', calculator: 'Kainodara', production: 'Gamyba', invoices: 'Sąskaitos', clients: 'Klientai', 'inv-create': 'Nauja sąskaita', todos: 'Užduotys',
+    'or-dashboard': 'Outreach', 'or-campaigns': 'Campaigns', 'or-leads': 'Leads', 'or-inbox': 'Inbox', 'or-mailboxes': 'Mailboxes', 'or-suppressions': 'Suppressions' };
   const subtitles = { orders: '', deals: '', accounting: '', products: '', calculator: '', production: '', invoices: '', clients: '', 'inv-create': '', todos: '' };
   document.getElementById('page-title').textContent = titles[view] || view;
   document.getElementById('page-subtitle').textContent = subtitles[view] || '';
@@ -70,7 +71,7 @@ function switchView(view) {
   document.getElementById('sync-btn').hidden     = view !== 'orders';
   document.getElementById('new-b2b-btn').hidden  = view !== 'orders';
   document.getElementById('new-deal-btn').hidden = view !== 'deals';
-  document.getElementById('header-count').hidden = ['calculator','production','invoices','clients','inv-create','todos'].includes(view);
+  document.getElementById('header-count').hidden = ['calculator','production','invoices','clients','inv-create','todos'].includes(view) || view.startsWith('or-');
 
   updateToolbarDate();
 
@@ -83,6 +84,7 @@ function switchView(view) {
   if (view === 'invoices')   initInvoices();
   if (view === 'clients')    initClients();
   if (view === 'todos')      initTodos();
+  if (typeof orOnView === 'function') orOnView(view); // starts/stops outreach auto-refresh
 
   // Close sidebar on mobile after nav click
   document.querySelector('.sidebar').classList.remove('open');

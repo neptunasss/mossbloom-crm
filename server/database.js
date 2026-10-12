@@ -541,6 +541,7 @@ try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN imap_last_uid INTEGER')
 try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN imap_last_check_at TEXT'); } catch {}
 try { db.exec('ALTER TABLE outreach_replies ADD COLUMN from_email TEXT'); } catch {}
 try { db.exec('ALTER TABLE outreach_replies ADD COLUMN message_id TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_replies ADD COLUMN deal_id INTEGER'); } catch {}
 
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS outreach_worker_log (

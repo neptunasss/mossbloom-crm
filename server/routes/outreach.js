@@ -8,6 +8,12 @@ const multer      = require('multer');
 const requireAuth = require('../middleware/auth');
 const db          = require('../database');
 const common      = require('../services/outreach-common');
+const { localDayStart, localWeekStart, toSql } = require('../worker/time');
+
+// Same formula the worker uses for today's send cap
+function effectiveLimit(m) {
+  return m.warmup_mode ? (m.warmup_daily_limit ?? m.warmup_start_limit) : m.daily_limit;
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -116,13 +122,14 @@ router.delete('/domains/:id', requireAuth, (req, res) => {
 // Strip credential fields out of a mailbox row, replacing with has_* flags
 function redactMailbox(m) {
   const { smtp_pass, imap_pass, ...rest } = m;
-  return { ...rest, has_smtp_pass: !!smtp_pass, has_imap_pass: !!imap_pass };
+  return { ...rest, effective_limit: effectiveLimit(m), has_smtp_pass: !!smtp_pass, has_imap_pass: !!imap_pass };
 }
 
 router.get('/mailboxes', requireAuth, (req, res) => {
   const { domain_id, status } = req.query;
-  let q = 'SELECT * FROM outreach_mailboxes WHERE 1=1';
-  const params = [];
+  let q = `SELECT m.*, (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.mailbox_id = m.id AND q.sent_at >= ?) AS sent_today
+    FROM outreach_mailboxes m WHERE 1=1`;
+  const params = [toSql(localDayStart())];
   if (domain_id) { q += ' AND domain_id = ?'; params.push(parseInt(domain_id, 10)); }
   if (status && status !== 'all') { q += ' AND status = ?'; params.push(status); }
   q += ' ORDER BY created_at DESC';
@@ -189,27 +196,58 @@ router.put('/mailboxes/:id', requireAuth, (req, res) => {
 });
 
 router.delete('/mailboxes/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM outreach_mailboxes WHERE id = ?').run(parseInt(req.params.id, 10));
+  const id = parseInt(req.params.id, 10);
+  db.transaction(() => {
+    db.prepare("UPDATE outreach_email_queue SET status = 'cancelled', error_message = 'mailbox deleted' WHERE mailbox_id = ? AND status = 'pending'").run(id);
+    db.prepare('DELETE FROM outreach_campaign_mailboxes WHERE mailbox_id = ?').run(id);
+    db.prepare('DELETE FROM outreach_mailboxes WHERE id = ?').run(id);
+  })();
   res.json({ ok: true });
 });
 
-// POST /api/outreach/mailboxes/:id/test-smtp — connectivity check only (see testBanner note above)
+// POST /api/outreach/mailboxes/:id/test-smtp — connects + authenticates (no email sent)
 router.post('/mailboxes/:id/test-smtp', requireAuth, async (req, res) => {
-  const mailbox = db.prepare('SELECT smtp_host, smtp_port FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
-  if (!mailbox) return res.status(404).json({ error: 'not found' });
-  const useTls = Number(mailbox.smtp_port) === 465;
-  const result = await testBanner(mailbox.smtp_host, mailbox.smtp_port, useTls);
-  result.note = 'connectivity check only — sending a real test email requires an SMTP client library, not yet installed';
-  res.json(result);
+  const m = db.prepare('SELECT * FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
+  if (!m) return res.status(404).json({ error: 'not found' });
+  if (!m.smtp_host) return res.json({ ok: false, error: 'SMTP host not set' });
+  const port = Number(m.smtp_port) || 587;
+  try {
+    const transporter = require('nodemailer').createTransport({
+      host: m.smtp_host, port, secure: port === 465,
+      auth: { user: m.smtp_user || m.email, pass: common.decrypt(m.smtp_pass) },
+      connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000,
+    });
+    await transporter.verify();
+    transporter.close();
+    res.json({ ok: true, message: `Connected and logged in to ${m.smtp_host}:${port}` });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
 });
 
-// POST /api/outreach/mailboxes/:id/test-imap — connectivity check only
+// POST /api/outreach/mailboxes/:id/test-imap — connects + logs in + opens INBOX
 router.post('/mailboxes/:id/test-imap', requireAuth, async (req, res) => {
-  const mailbox = db.prepare('SELECT imap_host, imap_port FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
-  if (!mailbox) return res.status(404).json({ error: 'not found' });
-  const useTls = Number(mailbox.imap_port) === 993;
-  const result = await testBanner(mailbox.imap_host, mailbox.imap_port, useTls);
-  res.json(result);
+  const m = db.prepare('SELECT * FROM outreach_mailboxes WHERE id = ?').get(parseInt(req.params.id, 10));
+  if (!m) return res.status(404).json({ error: 'not found' });
+  if (!m.imap_host) return res.json({ ok: false, error: 'IMAP host not set' });
+  const port = Number(m.imap_port) || 993;
+  let client;
+  try {
+    const { ImapFlow } = require('imapflow');
+    client = new ImapFlow({
+      host: m.imap_host, port, secure: port === 993,
+      auth: { user: m.imap_user || m.email, pass: common.decrypt(m.imap_pass) },
+      logger: false, socketTimeout: 20000,
+    });
+    client.on('error', () => {});
+    await client.connect();
+    const box = await client.mailboxOpen('INBOX', { readOnly: true });
+    res.json({ ok: true, message: `Logged in to ${m.imap_host}:${port} — INBOX has ${box.exists} messages` });
+  } catch (err) {
+    res.json({ ok: false, error: err.responseText || err.message });
+  } finally {
+    if (client) await client.logout().catch(() => {});
+  }
 });
 
 router.post('/mailboxes/:id/pause', requireAuth, (req, res) => {
@@ -295,6 +333,40 @@ router.post('/leads/import-csv', requireAuth, upload.single('file'), (req, res) 
   res.json({ inserted, skipped, total: rows.length - 1 });
 });
 
+// POST /api/outreach/leads/import — body: { rows: [{ email, first_name, ... }] }
+// (CSV is parsed + column-mapped in the browser.) Skips invalid emails,
+// duplicates (existing leads or repeated in the file) and suppressed emails.
+router.post('/leads/import', requireAuth, (req, res) => {
+  const { rows } = req.body;
+  if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows array required' });
+  if (rows.length > 20000) return res.status(400).json({ error: 'max 20000 rows per import' });
+
+  const fields = ['company_name', 'first_name', 'last_name', 'email', 'phone', 'website', 'industry', 'city', 'country'];
+  const existing = new Set(db.prepare("SELECT lower(email) AS e FROM outreach_leads WHERE email IS NOT NULL AND email != ''").all().map(r => r.e));
+  const suppressed = new Set(db.prepare('SELECT lower(email) AS e FROM outreach_suppressions').all().map(r => r.e));
+  const insert = db.prepare(`
+    INSERT INTO outreach_leads (company_name, first_name, last_name, email, phone, website, industry, city, country, status)
+    VALUES (?,?,?,?,?,?,?,?,?,'new')
+  `);
+  const skipped = { invalid: 0, duplicate: 0, suppressed: 0 };
+  let imported = 0;
+
+  db.transaction(() => {
+    for (const r of rows) {
+      const get = (k) => String(r[k] ?? '').trim();
+      const email = get('email').toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped.invalid++; continue; }
+      if (suppressed.has(email)) { skipped.suppressed++; continue; }
+      if (existing.has(email)) { skipped.duplicate++; continue; }
+      existing.add(email);
+      insert.run(...fields.map(k => (k === 'email' ? email : get(k))));
+      imported++;
+    }
+  })();
+
+  res.json({ imported, skipped: skipped.invalid + skipped.duplicate + skipped.suppressed, skipped_by_reason: skipped, total: rows.length });
+});
+
 router.put('/leads/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id FROM outreach_leads WHERE id = ?').get(id);
@@ -326,10 +398,131 @@ router.get('/campaigns', requireAuth, (req, res) => {
   const campaigns = db.prepare(`
     SELECT c.*,
       (SELECT COUNT(*) FROM outreach_campaign_leads cl WHERE cl.campaign_id = c.id) AS lead_count,
-      (SELECT COUNT(*) FROM outreach_campaign_mailboxes cm WHERE cm.campaign_id = c.id) AS mailbox_count
+      (SELECT COUNT(*) FROM outreach_campaign_mailboxes cm WHERE cm.campaign_id = c.id) AS mailbox_count,
+      (SELECT COUNT(*) FROM outreach_sequences s WHERE s.campaign_id = c.id) AS step_count,
+      (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.campaign_id = c.id AND q.sent_at IS NOT NULL) AS sent,
+      (SELECT COUNT(DISTINCT q.lead_id) FROM outreach_email_queue q WHERE q.campaign_id = c.id AND q.sent_at IS NOT NULL) AS contacted,
+      (SELECT COUNT(DISTINCT r.lead_id) FROM outreach_replies r JOIN outreach_email_queue q ON q.id = r.queue_id
+        WHERE q.campaign_id = c.id AND r.is_bounce = 0) AS replies,
+      (SELECT COUNT(DISTINCT r.lead_id) FROM outreach_replies r JOIN outreach_email_queue q ON q.id = r.queue_id
+        WHERE q.campaign_id = c.id AND r.is_bounce = 0 AND r.sentiment = 'positive') AS positive
     FROM outreach_campaigns c ORDER BY c.created_at DESC
   `).all();
+  for (const c of campaigns) c.reply_rate = c.contacted ? Math.round(c.replies / c.contacted * 1000) / 10 : 0;
   res.json({ campaigns });
+});
+
+router.get('/campaigns/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const campaign = db.prepare('SELECT * FROM outreach_campaigns WHERE id = ?').get(id);
+  if (!campaign) return res.status(404).json({ error: 'not found' });
+  campaign.mailbox_ids = db.prepare('SELECT mailbox_id FROM outreach_campaign_mailboxes WHERE campaign_id = ?').all(id).map(r => r.mailbox_id);
+  res.json({ campaign });
+});
+
+// PUT /api/outreach/campaigns/:id/mailboxes — body: { mailbox_ids: [...] } replaces the assignment
+router.put('/campaigns/:id/mailboxes', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!db.prepare('SELECT id FROM outreach_campaigns WHERE id = ?').get(id)) return res.status(404).json({ error: 'not found' });
+  const { mailbox_ids } = req.body;
+  if (!Array.isArray(mailbox_ids)) return res.status(400).json({ error: 'mailbox_ids array required' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM outreach_campaign_mailboxes WHERE campaign_id = ?').run(id);
+    const ins = db.prepare('INSERT INTO outreach_campaign_mailboxes (campaign_id, mailbox_id) VALUES (?, ?)');
+    for (const mid of new Set(mailbox_ids.map(Number))) ins.run(id, mid);
+  })();
+  res.json({ ok: true });
+});
+
+router.get('/campaigns/:id/leads', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const leads = db.prepare(`
+    SELECT cl.id, cl.status, cl.added_at, l.id AS lead_id, l.email, l.first_name, l.last_name,
+      l.company_name, l.city, l.status AS lead_status,
+      (SELECT COUNT(*) FROM outreach_email_queue q
+        WHERE q.campaign_id = cl.campaign_id AND q.lead_id = cl.lead_id AND q.sent_at IS NOT NULL) AS sent_count,
+      (SELECT MIN(q.scheduled_at) FROM outreach_email_queue q
+        WHERE q.campaign_id = cl.campaign_id AND q.lead_id = cl.lead_id AND q.status = 'pending') AS next_at
+    FROM outreach_campaign_leads cl
+    LEFT JOIN outreach_leads l ON l.id = cl.lead_id
+    WHERE cl.campaign_id = ?
+    ORDER BY cl.id DESC
+  `).all(id);
+  res.json({ leads });
+});
+
+router.get('/campaigns/:id/step-stats', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const steps = db.prepare(`
+    SELECT s.id, s.step_number, s.subject,
+      (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.sequence_id = s.id AND q.sent_at IS NOT NULL) AS sent,
+      (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.sequence_id = s.id AND q.status = 'bounced') AS bounced,
+      (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.sequence_id = s.id AND q.status = 'pending') AS pending,
+      (SELECT COUNT(DISTINCT r.lead_id) FROM outreach_replies r JOIN outreach_email_queue q ON q.id = r.queue_id
+        WHERE q.sequence_id = s.id AND r.is_bounce = 0) AS replied,
+      (SELECT COUNT(DISTINCT r.lead_id) FROM outreach_replies r JOIN outreach_email_queue q ON q.id = r.queue_id
+        WHERE q.sequence_id = s.id AND r.is_bounce = 0 AND r.sentiment = 'positive') AS positive
+    FROM outreach_sequences s WHERE s.campaign_id = ? ORDER BY s.step_number
+  `).all(id);
+  res.json({ steps });
+});
+
+// GET /api/outreach/campaigns/:id/start-summary — numbers for the Start confirmation
+router.get('/campaigns/:id/start-summary', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const campaign = db.prepare('SELECT * FROM outreach_campaigns WHERE id = ?').get(id);
+  if (!campaign) return res.status(404).json({ error: 'not found' });
+
+  const leads = db.prepare("SELECT COUNT(*) AS c FROM outreach_campaign_leads WHERE campaign_id = ? AND status IN ('pending','queued')").get(id).c;
+  const steps = db.prepare('SELECT step_number, delay_days FROM outreach_sequences WHERE campaign_id = ? ORDER BY step_number').all(id);
+  const mailboxes = db.prepare(`
+    SELECT m.* FROM outreach_campaign_mailboxes cm JOIN outreach_mailboxes m ON m.id = cm.mailbox_id
+    WHERE cm.campaign_id = ?
+  `).all(id);
+  const sendable = mailboxes.filter(m => ['active', 'warmup'].includes(m.status));
+
+  // Daily capacity: mailbox caps, then campaign + system caps (9 sending hours/day)
+  let perDay = sendable.reduce((sum, m) => sum + (effectiveLimit(m) || 0), 0);
+  if (campaign.daily_limit) perDay = Math.min(perDay, campaign.daily_limit);
+  const systemHourly = parseInt(common.getSetting('hourly_system_limit', '50'), 10) || 0;
+  perDay = Math.min(perDay, systemHourly * 9);
+
+  const totalEmails = leads * steps.length;
+  const delayDays = steps.slice(1).reduce((sum, s) => sum + (s.delay_days || 0), 0);
+  const sendingWorkdays = perDay > 0 ? Math.ceil(totalEmails / perDay) : null;
+  // Workdays → calendar days (5 of 7), plus the follow-up delays for the last batch
+  const estimatedDays = sendingWorkdays === null ? null : Math.ceil(sendingWorkdays * 7 / 5) + delayDays;
+
+  const warnings = [];
+  if (!steps.length) warnings.push('Campaign has no sequence steps.');
+  if (!leads) warnings.push('No pending leads in this campaign.');
+  if (!sendable.length) warnings.push('No active or warmup mailboxes assigned.');
+  if (sendable.some(m => !m.smtp_pass || !m.smtp_host)) warnings.push('Some assigned mailboxes have no SMTP host/password.');
+  if (common.getSetting('dry_run', 'true') !== 'false') warnings.push('DRY RUN is on — nothing will actually be sent.');
+  if (common.getSetting('global_paused', 'false') === 'true') warnings.push('All outreach is globally paused.');
+
+  res.json({
+    leads, steps: steps.length, mailboxes: sendable.length, assigned_mailboxes: mailboxes.length,
+    per_day: perDay, total_emails: totalEmails, estimated_days: estimatedDays, warnings,
+  });
+});
+
+// POST /api/outreach/campaigns/:id/preview — body: { lead_id, subject, body_html, body_text }
+router.post('/campaigns/:id/preview', requireAuth, (req, res) => {
+  const { lead_id, subject, body_html, body_text } = req.body;
+  const lead = lead_id
+    ? db.prepare('SELECT * FROM outreach_leads WHERE id = ?').get(parseInt(lead_id, 10))
+    : db.prepare(`
+        SELECT l.* FROM outreach_campaign_leads cl JOIN outreach_leads l ON l.id = cl.lead_id
+        WHERE cl.campaign_id = ? ORDER BY cl.id LIMIT 1
+      `).get(parseInt(req.params.id, 10)) || db.prepare('SELECT * FROM outreach_leads ORDER BY id LIMIT 1').get();
+  if (!lead) return res.status(400).json({ error: 'no leads to preview with' });
+  res.json({
+    lead: { id: lead.id, email: lead.email, first_name: lead.first_name, company_name: lead.company_name, city: lead.city },
+    subject: common.render(subject, lead, false),
+    html: body_html ? common.render(body_html, lead, true) : null,
+    text: body_text ? common.render(body_text, lead, false) : (body_html ? common.htmlToText(common.render(body_html, lead, false)) : ''),
+  });
 });
 
 router.post('/campaigns', requireAuth, (req, res) => {
@@ -407,8 +600,12 @@ router.post('/campaigns/:id/leads', requireAuth, (req, res) => {
 
 router.delete('/campaigns/:id/leads/:leadId', requireAuth, (req, res) => {
   const { id, leadId } = req.params;
-  db.prepare('DELETE FROM outreach_campaign_leads WHERE campaign_id = ? AND lead_id = ?')
-    .run(parseInt(id, 10), parseInt(leadId, 10));
+  db.transaction(() => {
+    db.prepare('DELETE FROM outreach_campaign_leads WHERE campaign_id = ? AND lead_id = ?')
+      .run(parseInt(id, 10), parseInt(leadId, 10));
+    db.prepare("UPDATE outreach_email_queue SET status = 'cancelled', error_message = 'removed from campaign' WHERE campaign_id = ? AND lead_id = ? AND status = 'pending'")
+      .run(parseInt(id, 10), parseInt(leadId, 10));
+  })();
   res.json({ ok: true });
 });
 
@@ -521,12 +718,105 @@ router.get('/queue', requireAuth, (req, res) => {
 });
 
 router.post('/queue/pause-all', requireAuth, (req, res) => {
-  db.prepare("INSERT INTO outreach_system_settings (key, value) VALUES ('global_paused', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run();
+  common.setSetting('global_paused', 'true');
+  common.workerLog('warn', 'ALL OUTREACH PAUSED from the UI');
   res.json({ ok: true });
 });
 
 router.post('/queue/resume-all', requireAuth, (req, res) => {
-  db.prepare("INSERT INTO outreach_system_settings (key, value) VALUES ('global_paused', 'false') ON CONFLICT(key) DO UPDATE SET value = 'false'").run();
+  common.setSetting('global_paused', 'false');
+  common.workerLog('info', 'outreach resumed from the UI');
+  res.json({ ok: true });
+});
+
+// POST /api/outreach/settings/dry-run — body: { dry_run: true|false }
+router.post('/settings/dry-run', requireAuth, (req, res) => {
+  if (typeof req.body.dry_run !== 'boolean') return res.status(400).json({ error: 'dry_run boolean required' });
+  common.setSetting('dry_run', req.body.dry_run ? 'true' : 'false');
+  common.workerLog('warn', req.body.dry_run ? 'DRY RUN turned ON from the UI' : 'DRY RUN turned OFF from the UI — live sending enabled');
+  res.json({ ok: true });
+});
+
+router.get('/dashboard', requireAuth, (req, res) => {
+  const today = toSql(localDayStart());
+  const week  = toSql(localWeekStart());
+  const count = (sql, ...args) => db.prepare(sql).get(...args).c;
+
+  const sentTotal = count('SELECT COUNT(*) AS c FROM outreach_email_queue WHERE sent_at IS NOT NULL');
+  const bounces   = count("SELECT COUNT(*) AS c FROM outreach_email_queue WHERE status = 'bounced'");
+  const kpis = {
+    sent_today:   count('SELECT COUNT(*) AS c FROM outreach_email_queue WHERE sent_at >= ?', today),
+    sent_week:    count('SELECT COUNT(*) AS c FROM outreach_email_queue WHERE sent_at >= ?', week),
+    sent_total:   sentTotal,
+    replies:      count('SELECT COUNT(*) AS c FROM outreach_replies WHERE is_bounce = 0'),
+    positive:     count("SELECT COUNT(*) AS c FROM outreach_replies WHERE is_bounce = 0 AND sentiment = 'positive'"),
+    untagged:     count('SELECT COUNT(*) AS c FROM outreach_replies WHERE is_bounce = 0 AND sentiment IS NULL'),
+    bounces,
+    bounce_rate:  sentTotal ? Math.round(bounces / sentTotal * 1000) / 10 : 0,
+    unsubscribes: count("SELECT COUNT(*) AS c FROM outreach_suppressions WHERE reason = 'unsubscribe'"),
+    pending:      count("SELECT COUNT(*) AS c FROM outreach_email_queue WHERE status = 'pending'"),
+  };
+
+  const mailboxes = db.prepare(`
+    SELECT m.id, m.email, m.status, m.warmup_mode, m.warmup_day, m.warmup_daily_limit, m.warmup_start_limit,
+      m.daily_limit, m.bounce_rate, m.pause_reason, m.imap_last_check_at,
+      (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.mailbox_id = m.id AND q.sent_at >= ?) AS sent_today,
+      (SELECT message FROM outreach_worker_log w WHERE w.mailbox_id = m.id AND w.level = 'error' ORDER BY w.id DESC LIMIT 1) AS last_error,
+      (SELECT timestamp FROM outreach_worker_log w WHERE w.mailbox_id = m.id AND w.level = 'error' ORDER BY w.id DESC LIMIT 1) AS last_error_at
+    FROM outreach_mailboxes m ORDER BY m.email
+  `).all(today).map(m => ({ ...m, effective_limit: effectiveLimit(m) }));
+
+  res.json({
+    settings: {
+      global_paused: common.getSetting('global_paused', 'false') === 'true',
+      dry_run: common.getSetting('dry_run', 'true') !== 'false',
+    },
+    kpis,
+    mailboxes,
+  });
+});
+
+// ── REPLIES (Inbox) ──────────────────────────────────────────────────────────
+
+const SENTIMENTS = ['positive', 'neutral', 'negative', 'unsubscribe'];
+
+router.get('/replies', requireAuth, (req, res) => {
+  const { sentiment, bounces, limit = 50, offset = 0 } = req.query;
+  let where = bounces === 'only' ? 'r.is_bounce = 1' : 'r.is_bounce = 0';
+  const params = [];
+  if (sentiment === 'untagged') where += ' AND r.sentiment IS NULL';
+  else if (sentiment && sentiment !== 'all') { where += ' AND r.sentiment = ?'; params.push(sentiment); }
+
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM outreach_replies r WHERE ${where}`).get(...params).c;
+  const replies = db.prepare(`
+    SELECT r.*, l.email AS lead_email, l.first_name, l.last_name, l.company_name, l.phone AS lead_phone,
+      l.city, l.status AS lead_status, q.campaign_id, c.name AS campaign_name, m.email AS mailbox_email
+    FROM outreach_replies r
+    LEFT JOIN outreach_leads l ON l.id = r.lead_id
+    LEFT JOIN outreach_email_queue q ON q.id = r.queue_id
+    LEFT JOIN outreach_campaigns c ON c.id = q.campaign_id
+    LEFT JOIN outreach_mailboxes m ON m.id = r.mailbox_id
+    WHERE ${where}
+    ORDER BY COALESCE(r.received_at, r.created_at) DESC, r.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, Math.min(Number(limit) || 50, 500), Number(offset) || 0);
+  res.json({ replies, total });
+});
+
+// PUT /api/outreach/replies/:id — body: { sentiment?, deal_id? }
+router.put('/replies/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const reply = db.prepare('SELECT * FROM outreach_replies WHERE id = ?').get(id);
+  if (!reply) return res.status(404).json({ error: 'not found' });
+  const { sentiment, deal_id } = req.body;
+  if (sentiment !== undefined) {
+    if (sentiment !== null && !SENTIMENTS.includes(sentiment)) return res.status(400).json({ error: 'invalid sentiment' });
+    db.prepare('UPDATE outreach_replies SET sentiment = ? WHERE id = ?').run(sentiment, id);
+    if (sentiment === 'unsubscribe' && reply.lead_id) {
+      common.stopLead(reply.lead_id, 'unsubscribed', { suppress: true, reason: 'unsubscribe' });
+    }
+  }
+  if (deal_id !== undefined) db.prepare('UPDATE outreach_replies SET deal_id = ? WHERE id = ?').run(deal_id, id);
   res.json({ ok: true });
 });
 

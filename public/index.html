@@ -74,6 +74,33 @@
         <i data-lucide="check-square" class="nav-icon"></i>
         Užduotys
       </a>
+
+      <div class="nav-section-label">Outreach</div>
+      <a href="#" class="nav-item" data-view="or-dashboard">
+        <i data-lucide="send" class="nav-icon"></i>
+        Outreach
+      </a>
+      <a href="#" class="nav-item" data-view="or-campaigns">
+        <i data-lucide="megaphone" class="nav-icon"></i>
+        Campaigns
+      </a>
+      <a href="#" class="nav-item" data-view="or-leads">
+        <i data-lucide="contact" class="nav-icon"></i>
+        Leads
+      </a>
+      <a href="#" class="nav-item" data-view="or-inbox">
+        <i data-lucide="inbox" class="nav-icon"></i>
+        Inbox
+        <span class="or-nav-badge" id="or-inbox-badge" hidden></span>
+      </a>
+      <a href="#" class="nav-item" data-view="or-mailboxes">
+        <i data-lucide="mail" class="nav-icon"></i>
+        Mailboxes
+      </a>
+      <a href="#" class="nav-item" data-view="or-suppressions">
+        <i data-lucide="ban" class="nav-icon"></i>
+        Suppressions
+      </a>
     </nav>
 
     <div class="sidebar-stores">
@@ -862,7 +889,46 @@
       </div>
     </div>
 
+    <!-- ── Outreach views (rendered by /js/outreach.js) ── -->
+    <div class="view or-view" id="view-or-dashboard" hidden>
+      <div class="content-body" id="or-dashboard-root"></div>
+    </div>
+
+    <div class="view or-view" id="view-or-campaigns" hidden>
+      <div class="content-body" id="or-campaigns-root"></div>
+    </div>
+
+    <div class="view or-view" id="view-or-leads" hidden>
+      <div class="content-body" id="or-leads-root"></div>
+    </div>
+
+    <div class="view or-view" id="view-or-inbox" hidden>
+      <div class="content-body" id="or-inbox-root"></div>
+    </div>
+
+    <div class="view or-view" id="view-or-mailboxes" hidden>
+      <div class="content-body" id="or-mailboxes-root"></div>
+    </div>
+
+    <div class="view or-view" id="view-or-suppressions" hidden>
+      <div class="content-body" id="or-suppressions-root"></div>
+    </div>
+
   </main>
+</div>
+
+<!-- ── Outreach generic modal ── -->
+<div id="or-modal" class="modal-overlay" hidden>
+  <div class="modal" id="or-modal-box">
+    <div class="modal-header">
+      <h3 id="or-modal-title"></h3>
+      <button class="btn-icon" onclick="orCloseModal()" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="or-modal-body"></div>
+    <div class="modal-footer" id="or-modal-footer"></div>
+  </div>
 </div>
 
 <!-- ── Client slide panel ── -->
@@ -1506,6 +1572,7 @@
 <script src="/js/invoices.js"></script>
 <script src="/js/clients.js"></script>
 <script src="/js/todos.js"></script>
+<script src="/js/outreach.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
