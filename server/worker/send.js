@@ -11,9 +11,11 @@ const { workerLog: log, getSetting, render, htmlToText, escapeHtml } = common;
 const SENDABLE_MAILBOX = ['active', 'warmup'];
 const STOPPED_LEAD     = ['replied', 'bounced', 'unsubscribed'];
 const MAX_PENDING_STEP1_PER_MAILBOX = 10;
-const SMTP_ERRORS_BEFORE_PAUSE = 5;
-const BOUNCE_WINDOW = 50;
-const BOUNCE_RATE_LIMIT = 0.05;
+// Shared with the dashboard's domain health section (server/routes/outreach.js)
+const {
+  SMTP_ERRORS_BEFORE_PAUSE, BOUNCE_WINDOW, BOUNCE_MIN_SENDS, BOUNCE_RATE_LIMIT,
+  DOMAIN_WINDOW_DAYS, DOMAIN_MIN_SENDS,
+} = common.HEALTH;
 
 const randomGapMs = () => (2 + Math.random() * 4) * 60000; // 2–6 min
 
@@ -46,19 +48,42 @@ function pauseMailbox(mailboxId, reason) {
   if (r.changes) log('warn', `mailbox AUTO-PAUSED: ${reason}`, mailboxId);
 }
 
+// Mailbox: bounce rate over its last 50 sends, judged only from 20 sends on.
+// Then the mailbox's domain: last 7 days across all its mailboxes.
 function checkBounceRate(mailboxId) {
   const rows = db.prepare(`
     SELECT status FROM outreach_email_queue
     WHERE mailbox_id = ? AND sent_at IS NOT NULL
     ORDER BY sent_at DESC LIMIT ${BOUNCE_WINDOW}
   `).all(mailboxId);
-  if (!rows.length) return;
-  const bounced = rows.filter(r => r.status === 'bounced').length;
-  const rate = bounced / rows.length;
-  db.prepare('UPDATE outreach_mailboxes SET bounce_rate = ? WHERE id = ?').run(Math.round(rate * 10000) / 100, mailboxId);
-  if (rate > BOUNCE_RATE_LIMIT) {
-    pauseMailbox(mailboxId, `bounce rate ${(rate * 100).toFixed(1)}% (${bounced}/${rows.length} of last sends) > ${BOUNCE_RATE_LIMIT * 100}%`);
+  if (rows.length) {
+    const bounced = rows.filter(r => r.status === 'bounced').length;
+    const rate = bounced / rows.length;
+    db.prepare('UPDATE outreach_mailboxes SET bounce_rate = ? WHERE id = ?').run(Math.round(rate * 10000) / 100, mailboxId);
+    if (rows.length >= BOUNCE_MIN_SENDS && rate > BOUNCE_RATE_LIMIT) {
+      pauseMailbox(mailboxId, `bounce rate ${(rate * 100).toFixed(1)}% (${bounced}/${rows.length} of last sends) > ${BOUNCE_RATE_LIMIT * 100}%`);
+    }
   }
+  const mb = db.prepare('SELECT domain_id FROM outreach_mailboxes WHERE id = ?').get(mailboxId);
+  if (mb && mb.domain_id) checkDomainBounceRate(mb.domain_id);
+}
+
+function checkDomainBounceRate(domainId) {
+  const since = toSql(new Date(Date.now() - DOMAIN_WINDOW_DAYS * 86400000));
+  const { sent, bounced } = db.prepare(`
+    SELECT COUNT(*) AS sent, COALESCE(SUM(q.status = 'bounced'), 0) AS bounced
+    FROM outreach_email_queue q
+    JOIN outreach_mailboxes m ON m.id = q.mailbox_id
+    WHERE m.domain_id = ? AND q.sent_at >= ?
+  `).get(domainId, since);
+  if (sent < DOMAIN_MIN_SENDS || bounced / sent <= BOUNCE_RATE_LIMIT) return;
+
+  const domain = db.prepare('SELECT domain FROM outreach_domains WHERE id = ?').get(domainId);
+  const reason = `domain ${domain ? domain.domain : '#' + domainId} bounce rate ${(bounced / sent * 100).toFixed(1)}% (${bounced}/${sent} sends, last ${DOMAIN_WINDOW_DAYS} days) > ${BOUNCE_RATE_LIMIT * 100}%`;
+  const boxes = db.prepare("SELECT id FROM outreach_mailboxes WHERE domain_id = ? AND status != 'paused'").all(domainId);
+  if (!boxes.length) return;
+  log('warn', `DOMAIN AUTO-PAUSE: ${reason} — pausing ${boxes.length} mailbox(es)`);
+  for (const b of boxes) pauseMailbox(b.id, reason);
 }
 
 // ── Enqueue step 1 for leads of active campaigns ─────────────────────────────
@@ -427,4 +452,4 @@ function recoverStuckSending() {
   if (r.changes) log('warn', `${r.changes} queue item(s) were stuck in 'sending' after restart — marked failed, not retried`);
 }
 
-module.exports = { sendTick, recoverStuckSending, checkBounceRate, pauseMailbox };
+module.exports = { sendTick, recoverStuckSending, checkBounceRate, checkDomainBounceRate, pauseMailbox };

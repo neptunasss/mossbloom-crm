@@ -3745,3 +3745,31 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
 .or-abf-count { font-size: 15px; padding: 10px 12px; background: var(--bg); border-radius: 10px; margin-bottom: 8px; }
 .or-import-list { max-width: 460px; }
 @media (max-width: 768px) { .or-facet-select { max-width: none; flex: 1 1 140px; } }
+
+/* Outreach domain health */
+.or-section-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; flex-shrink: 0; margin-top: 4px; }
+.or-section-head h3 { font-size: 15px; font-weight: 600; }
+.or-dh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; flex-shrink: 0; }
+.or-dh-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  border-top: 3px solid var(--green);
+}
+.or-dh-card.or-dh-watch { border-top-color: var(--orange); }
+.or-dh-card.or-dh-paused { border-top-color: var(--red); background: linear-gradient(var(--red-pastel), var(--surface) 90px); }
+.or-dh-card .or-card-head h3 { font-size: 15px; word-break: break-all; }
+.or-dh-stats { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.or-dh-stat { background: var(--bg); border-radius: 10px; padding: 8px 6px; text-align: center; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.or-dh-stat span { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+.or-dh-stat label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.or-dh-stat.is-warn span { color: #b25f00; }
+.or-dh-stat.is-bad span { color: #cc2f26; }
+.or-dh-stat.is-good span { color: var(--green-deep); }
+.or-dh-table .orders-table { min-width: 620px; }
+.or-dh-table .orders-table thead th, .or-dh-table .orders-table tbody td { padding: 8px 10px; font-size: 12.5px; }
+.or-health-badge { display: inline-flex; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.or-health-ok { background: var(--green-pastel); color: var(--green-deep); }
+.or-health-watch { background: var(--orange-pastel); color: #b25f00; }
+.or-health-paused { background: var(--red); color: #fff; }
+@media (max-width: 900px) { .or-dh-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .or-dh-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

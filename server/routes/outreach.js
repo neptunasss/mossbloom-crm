@@ -830,6 +830,65 @@ router.get('/dashboard', requireAuth, (req, res) => {
   });
 });
 
+// GET /api/outreach/domain-health — last 7 days per domain and per mailbox
+router.get('/domain-health', requireAuth, (req, res) => {
+  const H = common.HEALTH;
+  const since = toSql(new Date(Date.now() - H.DOMAIN_WINDOW_DAYS * 86400000));
+  const byMailbox = (sql) => new Map(db.prepare(sql).all(since).map(r => [r.mailbox_id, r.c]));
+
+  const sent    = byMailbox('SELECT mailbox_id, COUNT(*) AS c FROM outreach_email_queue WHERE sent_at >= ? GROUP BY mailbox_id');
+  const bounced = byMailbox("SELECT mailbox_id, COUNT(*) AS c FROM outreach_email_queue WHERE sent_at >= ? AND status = 'bounced' GROUP BY mailbox_id");
+  const replies = byMailbox('SELECT mailbox_id, COUNT(*) AS c FROM outreach_replies WHERE is_bounce = 0 AND COALESCE(received_at, created_at) >= ? GROUP BY mailbox_id');
+  const positive = byMailbox("SELECT mailbox_id, COUNT(*) AS c FROM outreach_replies WHERE is_bounce = 0 AND sentiment = 'positive' AND COALESCE(received_at, created_at) >= ? GROUP BY mailbox_id");
+  const smtpErrors = byMailbox("SELECT mailbox_id, COUNT(*) AS c FROM outreach_worker_log WHERE level = 'error' AND message LIKE '%SMTP error%' AND timestamp >= ? GROUP BY mailbox_id");
+  // Unsubscribes are attributed to the mailbox that last emailed the lead
+  const unsubs = byMailbox(`
+    SELECT mailbox_id, COUNT(*) AS c FROM (
+      SELECT (SELECT q.mailbox_id FROM outreach_email_queue q JOIN outreach_leads l ON l.id = q.lead_id
+              WHERE lower(l.email) = lower(s.email) AND q.sent_at IS NOT NULL
+              ORDER BY q.sent_at DESC LIMIT 1) AS mailbox_id
+      FROM outreach_suppressions s WHERE s.reason = 'unsubscribe' AND s.created_at >= ?
+    ) GROUP BY mailbox_id
+  `);
+
+  const rate = (b, s) => (s ? Math.round(b / s * 1000) / 10 : 0);
+  const health = (pct, paused) => (paused || pct > H.BOUNCE_RATE_LIMIT * 100 ? 'paused' : pct >= H.BOUNCE_WATCH * 100 ? 'watch' : 'healthy');
+  const stats = (id) => ({
+    sent: sent.get(id) || 0, bounced: bounced.get(id) || 0, replies: replies.get(id) || 0,
+    positive: positive.get(id) || 0, unsubscribes: unsubs.get(id) || 0, smtp_errors: smtpErrors.get(id) || 0,
+  });
+
+  const mailboxes = db.prepare('SELECT id, email, status, domain_id, pause_reason FROM outreach_mailboxes ORDER BY email').all()
+    .map(m => {
+      const s = stats(m.id);
+      s.bounce_rate = rate(s.bounced, s.sent);
+      return { ...m, ...s, health: health(s.bounce_rate, m.status === 'paused') };
+    });
+
+  const group = (d) => {
+    const boxes = mailboxes.filter(m => (d ? m.domain_id === d.id : !domainIds.has(m.domain_id)));
+    const t = { sent: 0, bounced: 0, replies: 0, positive: 0, unsubscribes: 0, smtp_errors: 0 };
+    for (const m of boxes) for (const k of Object.keys(t)) t[k] += m[k];
+    t.bounce_rate = rate(t.bounced, t.sent);
+    const allPaused = boxes.length > 0 && boxes.every(m => m.status === 'paused');
+    return {
+      id: d ? d.id : null, domain: d ? d.domain : 'No domain', status: d ? d.status : null, ...t,
+      health: health(t.bounce_rate, (d && d.status === 'paused') || allPaused),
+      mailboxes: boxes,
+    };
+  };
+  const domains = db.prepare('SELECT * FROM outreach_domains ORDER BY domain').all();
+  const domainIds = new Set(domains.map(d => d.id));
+  const result = domains.map(group);
+  if (mailboxes.some(m => !domainIds.has(m.domain_id))) result.push(group(null));
+
+  res.json({
+    window_days: H.DOMAIN_WINDOW_DAYS,
+    thresholds: { watch: H.BOUNCE_WATCH * 100, pause: H.BOUNCE_RATE_LIMIT * 100, domain_min_sends: H.DOMAIN_MIN_SENDS },
+    domains: result,
+  });
+});
+
 // ── REPLIES (Inbox) ──────────────────────────────────────────────────────────
 
 const SENTIMENTS = ['positive', 'neutral', 'negative', 'unsubscribe'];

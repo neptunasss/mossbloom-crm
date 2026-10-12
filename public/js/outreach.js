@@ -150,18 +150,85 @@ async function orLoadDashboard(silent = false) {
   const root = orRoot('dashboard');
   if (!silent && !root.innerHTML) root.innerHTML = '<div class="or-loading">Loading…</div>';
   try {
-    const [dash, { log }] = await Promise.all([
+    const [dash, { log }, health] = await Promise.all([
       api('/api/outreach/dashboard'),
       api('/api/outreach/worker-log?limit=50'),
+      api('/api/outreach/domain-health'),
     ]);
-    orRenderDashboard(dash, log);
+    orRenderDashboard(dash, log, health);
     orUpdateInboxBadge(dash.kpis.untagged);
   } catch (err) {
     if (!silent) root.innerHTML = `<div class="or-error">Failed to load: ${esc(err.message)}</div>`;
   }
 }
 
-function orRenderDashboard({ settings, kpis, mailboxes }, log) {
+const OR_HEALTH = {
+  healthy: { label: 'HEALTHY', cls: 'or-health-ok' },
+  watch:   { label: 'WATCH',   cls: 'or-health-watch' },
+  paused:  { label: 'PAUSED',  cls: 'or-health-paused' },
+};
+
+function orHealthBadge(h) {
+  const x = OR_HEALTH[h] || OR_HEALTH.healthy;
+  return `<span class="or-health-badge ${x.cls}">${x.label}</span>`;
+}
+
+// Domain health — one card per domain, last 7 days, with per-mailbox rows
+function orRenderDomainHealth(health) {
+  if (!health || !health.domains.length) return '';
+  const t = health.thresholds;
+  const cell = (label, value, tone = '') => `<div class="or-dh-stat ${tone}"><span>${value}</span><label>${label}</label></div>`;
+  const rateTone = (r) => (r > t.pause ? 'is-bad' : r >= t.watch ? 'is-warn' : '');
+
+  const cards = health.domains.map(d => `
+    <div class="or-dh-card or-dh-${d.health}">
+      <div class="or-card-head">
+        <div>
+          <h3>${esc(d.domain)}</h3>
+          <span class="or-muted">${d.mailboxes.length} mailbox${d.mailboxes.length === 1 ? '' : 'es'}${d.sent < t.domain_min_sends ? ` · domain auto-pause needs ${t.domain_min_sends}+ sends` : ''}</span>
+        </div>
+        ${orHealthBadge(d.health)}
+      </div>
+      <div class="or-dh-stats">
+        ${cell('Sent', d.sent)}
+        ${cell('Bounced', d.bounced, d.bounced ? 'is-warn' : '')}
+        ${cell('Bounce rate', `${d.bounce_rate}%`, rateTone(d.bounce_rate))}
+        ${cell('Replies', d.replies)}
+        ${cell('Positive', d.positive, d.positive ? 'is-good' : '')}
+        ${cell('Unsubs', d.unsubscribes)}
+        ${cell('SMTP errors', d.smtp_errors, d.smtp_errors ? 'is-bad' : '')}
+      </div>
+      ${d.mailboxes.length ? `
+      <div class="table-wrap or-flat or-dh-table">
+        <table class="orders-table">
+          <thead><tr><th>Mailbox</th><th>Status</th><th class="text-right">Sent</th><th class="text-right">Bounced</th><th class="text-right">Rate</th>
+            <th class="text-right">Replies</th><th class="text-right">Positive</th><th class="text-right">Unsubs</th><th class="text-right">SMTP err</th></tr></thead>
+          <tbody>${d.mailboxes.map(m => `
+            <tr title="${esc(m.pause_reason || '')}">
+              <td class="col-customer">${esc(m.email)}</td>
+              <td>${orHealthBadge(m.health)}</td>
+              <td class="text-right">${m.sent}</td>
+              <td class="text-right">${m.bounced}</td>
+              <td class="text-right ${m.bounce_rate > t.pause ? 'or-err-text' : ''}">${m.bounce_rate}%</td>
+              <td class="text-right">${m.replies}</td>
+              <td class="text-right">${m.positive}</td>
+              <td class="text-right">${m.unsubscribes}</td>
+              <td class="text-right ${m.smtp_errors ? 'or-err-text' : ''}">${m.smtp_errors}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '<div class="or-empty">No mailboxes on this domain.</div>'}
+    </div>`).join('');
+
+  return `
+    <div class="or-section-head">
+      <h3>Domain health</h3>
+      <span class="or-muted">last ${health.window_days} days · HEALTHY &lt; ${t.watch}% · WATCH ${t.watch}–${t.pause}% · PAUSED &gt; ${t.pause}% or paused</span>
+    </div>
+    <div class="or-dh-grid">${cards}</div>`;
+}
+
+function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
   const paused = settings.global_paused;
   const dry = settings.dry_run;
 
@@ -172,7 +239,7 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log) {
       ${sub ? `<span class="prod-stat-name">${sub}</span>` : ''}
     </div>`;
 
-  const bounceTone = kpis.bounce_rate > 5 ? 'or-kpi-bad' : kpis.bounce_rate > 2 ? 'or-kpi-warn' : '';
+  const bounceTone = kpis.bounce_rate > 3 ? 'or-kpi-bad' : kpis.bounce_rate >= 2 ? 'or-kpi-warn' : '';
 
   const mbRows = mailboxes.map(m => {
     const pct = m.effective_limit ? Math.min(100, Math.round(m.sent_today / m.effective_limit * 100)) : 0;
@@ -193,7 +260,7 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log) {
         <div class="or-progress or-progress-sm"><div style="width:${pct}%"></div></div></div>
       </td>
       <td><div class="or-warm-cell">${warm}</div></td>
-      <td class="${m.bounce_rate > 5 ? 'or-err-text' : ''}">${(m.bounce_rate || 0).toFixed(1)}%</td>
+      <td class="${m.bounce_rate > 3 ? 'or-err-text' : ''}">${(m.bounce_rate || 0).toFixed(1)}%</td>
       <td class="or-err-cell">${err}</td>
     </tr>`;
   }).join('');
@@ -234,9 +301,11 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log) {
       ${kpi('Replies', kpis.replies, kpis.untagged ? `<a href="#" onclick="switchView('or-inbox');return false">${kpis.untagged} to tag →</a>` : '')}
       ${kpi('Positive', kpis.positive, '', kpis.positive ? 'or-kpi-good' : '')}
       ${kpi('Bounces', kpis.bounces)}
-      ${kpi('Bounce rate', `${kpis.bounce_rate}%`, 'pause above 5%', bounceTone)}
+      ${kpi('Bounce rate', `${kpis.bounce_rate}%`, 'auto-pause above 3%', bounceTone)}
       ${kpi('Unsubscribes', kpis.unsubscribes)}
     </div>
+
+    ${orRenderDomainHealth(health)}
 
     <div class="or-card">
       <div class="or-card-head">

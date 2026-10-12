@@ -5,6 +5,18 @@
 const crypto = require('crypto');
 const db     = require('../database');
 
+// ── Auto-pause / health thresholds (worker + dashboard) ─────────────────────
+
+const HEALTH = {
+  SMTP_ERRORS_BEFORE_PAUSE: 3,  // consecutive SMTP errors → pause mailbox
+  BOUNCE_WINDOW: 50,            // mailbox: look at its last 50 sends…
+  BOUNCE_MIN_SENDS: 20,         // …but only judge once it has 20+
+  BOUNCE_RATE_LIMIT: 0.03,      // > 3% → pause (mailbox and domain)
+  BOUNCE_WATCH: 0.02,           // 2–3% → WATCH badge on the dashboard
+  DOMAIN_WINDOW_DAYS: 7,        // domain: bounce rate over the last 7 days…
+  DOMAIN_MIN_SENDS: 30,         // …judged once the domain has 30+ sends
+};
+
 // ── Encryption (AES-256-GCM) for smtp_pass / imap_pass ──────────────────────
 
 const ENC_PREFIX = 'enc:v1:';
@@ -164,6 +176,7 @@ const stopLead = db.transaction((leadId, status, { suppress = false, reason = st
 });
 
 module.exports = {
+  HEALTH,
   encrypt, decrypt, isEncrypted, encryptExistingMailboxPasswords,
   signLeadToken, verifyLeadToken, publicBaseUrl,
   getSetting, setSetting, workerLog,
