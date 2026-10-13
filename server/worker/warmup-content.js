@@ -2,8 +2,8 @@
 
 // Natural, varied Lithuanian warmup messages built from random combinations.
 // Rules: no links, no images, no tracking, no unsubscribe footer, no sales
-// language. Every message carries a 6-char code in the body text so seeds and
-// mailboxes can recognise it (codes are never put in headers or subjects).
+// language, no visible markers. Warmup mail is recognised by its Message-ID
+// (stored in outreach_warmup_messages), not by anything in the body.
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const chance = (p) => Math.random() < p;
@@ -13,23 +13,6 @@ function pickN(arr, n) {
   const out = [];
   while (out.length < n && copy.length) out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
   return out;
-}
-
-// No 0/O/1/I to keep codes unambiguous
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-function makeCode() {
-  for (;;) {
-    let c = '';
-    for (let i = 0; i < 6; i++) c += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-    if (/[0-9]/.test(c) && /[A-Z]/.test(c)) return c; // mixed → never a real word
-  }
-}
-
-// Candidate codes in a body (verified against the DB by the caller)
-function findCodes(text) {
-  return [...new Set(String(text || '').match(/\b[A-HJ-NP-Z2-9]{6}\b/g) || [])]
-    .filter(c => /[0-9]/.test(c) && /[A-Z]/.test(c));
 }
 
 const GREETINGS = ['Labas', 'Sveiki', 'Laba diena', 'Labas!', 'Sveikas', 'Labas dar kartą', 'Sveiki,'];
@@ -131,40 +114,37 @@ function signatureName(email, displayName) {
 const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // paragraphs: array of strings (lines within a paragraph joined by \n)
-function render(paragraphs, code) {
-  const text = paragraphs.join('\n\n') + `\n\n${code}`;
+function render(paragraphs) {
+  const text = paragraphs.join('\n\n');
   const html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">' +
-    paragraphs.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('') +
-    `<p>${code}</p></div>`;
+    paragraphs.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('') + '</div>';
   return { text, html };
 }
 
 // New thread from a mailbox to a seed
 function newMessage({ fromEmail, fromName }) {
   const topic = TOPICS[pick(Object.keys(TOPICS))];
-  const code = makeCode();
   const body = pickN(topic.lines, chance(0.5) ? 1 : 2);
   if (chance(0.4)) body.splice(Math.floor(Math.random() * (body.length + 1)), 0, pick(FILLERS));
   const paragraphs = [`${pick(GREETINGS).replace(/[,!]$/, '')},`, body.join(' ')];
   const sig = signatureName(fromEmail, fromName);
   paragraphs.push(sig ? `${pick(CLOSINGS)}\n${sig}` : pick(CLOSINGS));
-  return { subject: pick(topic.subjects), code, ...render(paragraphs, code) };
+  return { subject: pick(topic.subjects), ...render(paragraphs) };
 }
 
 // Short reply (seed → mailbox, or mailbox continuing the thread)
 function replyMessage({ fromEmail, fromName, continuation = false }) {
-  const code = makeCode();
   const first = continuation ? pick(CONTINUATIONS) : pick(REPLIES);
   const parts = [first];
   if (!continuation && chance(0.45)) parts.push(pick(REPLY_EXTRAS));
   const paragraphs = [parts.join(' ')];
   const sig = signatureName(fromEmail, fromName);
   if (sig && chance(0.7)) paragraphs.push(sig);
-  return { code, ...render(paragraphs, code) };
+  return render(paragraphs);
 }
 
 function replySubject(subject) {
   return 'Re: ' + String(subject || '').replace(/^\s*(re:\s*)+/i, '');
 }
 
-module.exports = { newMessage, replyMessage, replySubject, makeCode, findCodes };
+module.exports = { newMessage, replyMessage, replySubject };

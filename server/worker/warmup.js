@@ -3,11 +3,14 @@
 // Warmup: mailboxes ↔ seed inboxes the user owns.
 //
 //  mailbox ──out──▶ seed       (warmupTick, ramp 2→15/day over 21 days, then ~15/day)
-//  seed IMAP: find it in INBOX / Spam, rescue from spam, mark read, flag ~30%,
-//             plan a reply for ~40%                      (seedTick, every 10 min)
+//  seed IMAP: SEARCH HEADER Message-ID in INBOX / Spam, rescue from spam,
+//             mark read, flag ~30%, plan a reply for ~40% (seedTick, every 10 min)
 //  seed ──reply──▶ mailbox     (warmupTick, 15–180 min later)
-//  mailbox IMAP: hide the reply in a "Warmup" folder, never an outreach reply,
-//                continue the thread ~20%                (classifyIncoming)
+//  mailbox IMAP: matched by In-Reply-To/References → hidden in a "Warmup"
+//                folder, never an outreach reply; continue ~20% (classifyIncoming)
+//
+// Warmup mail carries no visible marker — it is identified only by the
+// Message-IDs stored in outreach_warmup_messages.
 //
 // Warmup has its own on/off switch (separate from the outreach pause), runs
 // every day 08:00–20:00 Vilnius, ignores campaign pauses, and respects dry_run.
@@ -15,7 +18,6 @@
 const crypto           = require('crypto');
 const nodemailer       = require('nodemailer');
 const { ImapFlow }     = require('imapflow');
-const { simpleParser } = require('mailparser');
 const db               = require('../database');
 const common           = require('../services/outreach-common');
 const content          = require('./warmup-content');
@@ -112,14 +114,14 @@ async function smtpSend(cfg, mail) {
 
 const insertMsg = db.prepare(`
   INSERT INTO outreach_warmup_messages
-    (mailbox_id, seed_id, direction, subject, message_id, in_reply_to, references_header, code, status, error, sent_at, landed_in, opened_at)
-  VALUES (@mailbox_id, @seed_id, @direction, @subject, @message_id, @in_reply_to, @references_header, @code, @status, @error, @sent_at, @landed_in, @opened_at)
+    (mailbox_id, seed_id, direction, subject, message_id, in_reply_to, references_header, status, error, sent_at, landed_in, opened_at)
+  VALUES (@mailbox_id, @seed_id, @direction, @subject, @message_id, @in_reply_to, @references_header, @status, @error, @sent_at, @landed_in, @opened_at)
 `);
 
 function recordMsg(row) {
   return insertMsg.run({
     mailbox_id: null, seed_id: null, subject: null, message_id: null, in_reply_to: null, references_header: null,
-    code: null, status: 'sent', error: null, sent_at: toSql(new Date()), landed_in: 'unknown', opened_at: null, ...row,
+    status: 'sent', error: null, sent_at: toSql(new Date()), landed_in: 'unknown', opened_at: null, ...row,
   }).lastInsertRowid;
 }
 
@@ -128,11 +130,11 @@ async function sendFromMailbox(mb, seed, msg, dry) {
   const messageId = `<${crypto.randomUUID()}@${domainOf(mb.email)}>`;
   const base = {
     mailbox_id: mb.id, seed_id: seed.id, direction: 'out', subject: msg.subject, message_id: messageId,
-    in_reply_to: msg.inReplyTo || null, references_header: msg.references || null, code: msg.code,
+    in_reply_to: msg.inReplyTo || null, references_header: msg.references || null,
   };
   if (dry) {
     recordMsg({ ...base, status: 'dry_run' });
-    log('info', `[DRY RUN] warmup ${mb.email} → ${seed.email} "${msg.subject}" (code ${msg.code})${msg.inReplyTo ? ' [thread reply]' : ''}`, mb.id);
+    log('info', `[DRY RUN] warmup ${mb.email} → ${seed.email} "${msg.subject}"${msg.inReplyTo ? ' [thread reply]' : ''}`, mb.id);
     return true;
   }
   if (isForbiddenRecipient(seed.email)) {
@@ -260,7 +262,7 @@ async function sendDueSeedReplies(dry) {
     }
     recordMsg({
       mailbox_id: o.mailbox_id, seed_id: seed.id, direction: 'reply', subject, message_id: messageId,
-      in_reply_to: o.message_id, references_header: refs, code: m.code,
+      in_reply_to: o.message_id, references_header: refs,
     });
     db.prepare('UPDATE outreach_warmup_messages SET replied_at = ?, reply_due_at = NULL WHERE id = ?').run(toSql(new Date()), o.id);
     log('info', `warmup seed ${seed.email} replied to ${o.mailbox_email} "${subject}"`, o.mailbox_id);
@@ -314,19 +316,27 @@ function findSpamFolder(boxes, provider) {
   return named ? named.path : null;
 }
 
-function findOutRowForSeed(seedId, parsed) {
-  if (parsed.messageId) {
-    const r = db.prepare("SELECT * FROM outreach_warmup_messages WHERE message_id = ? AND seed_id = ? AND direction = 'out'").get(parsed.messageId, seedId);
-    if (r) return r;
+const normId = (id) => String(id || '').trim().replace(/^<?/, '<').replace(/>?$/, '>').toLowerCase();
+
+// IMAP SEARCH HEADER Message-ID for each stored warmup message, OR-ed in
+// chunks; returns Map(uid → row) for the selected folder.
+async function searchByMessageId(client, rows) {
+  const byId = new Map(rows.map(r => [normId(r.message_id), r]));
+  const found = new Map();
+  for (let i = 0; i < rows.length; i += 25) {
+    const chunk = rows.slice(i, i + 25).map(r => ({ header: { 'message-id': r.message_id } }));
+    const uids = (await client.search(chunk.length === 1 ? chunk[0] : { or: chunk }, { uid: true })) || [];
+    if (!uids.length) continue;
+    // Confirm which stored message each hit is (OR search doesn't say)
+    for await (const m of client.fetch(uids.join(','), { uid: true, envelope: true }, { uid: true })) {
+      const row = byId.get(normId(m.envelope?.messageId));
+      if (row) found.set(m.uid, row);
+    }
   }
-  const codes = content.findCodes(parsed.text);
-  if (!codes.length) return null;
-  return db.prepare(`SELECT * FROM outreach_warmup_messages WHERE seed_id = ? AND direction = 'out' AND code IN (${codes.map(() => '?').join(',')}) LIMIT 1`)
-    .get(seedId, ...codes);
+  return found;
 }
 
 async function engageSeed(seed) {
-  const ourAddresses = new Set(db.prepare('SELECT lower(email) AS e FROM outreach_mailboxes').all().map(r => r.e));
   const port = Number(seed.imap_port) || 993;
   const client = new ImapFlow({
     host: seed.imap_host, port, secure: port === 993,
@@ -341,34 +351,27 @@ async function engageSeed(seed) {
     const spamPath = findSpamFolder(await client.list(), seed.provider);
     const folders = [['INBOX', 'inbox']];
     if (spamPath) folders.push([spamPath, 'spam']);
-    const since = new Date(Date.now() - SEED_LOOKBACK_DAYS * 86400000);
+    const since = toSql(new Date(Date.now() - SEED_LOOKBACK_DAYS * 86400000));
 
     for (const [folder, kind] of folders) {
+      // INBOX: only messages not placed yet. Spam: anything still there
+      // (also retries a rescue whose move failed last time).
+      const rows = db.prepare(`
+        SELECT * FROM outreach_warmup_messages
+        WHERE seed_id = ? AND direction = 'out' AND status = 'sent' AND message_id IS NOT NULL AND sent_at >= ?
+          ${kind === 'inbox' ? "AND landed_in = 'unknown'" : ''}
+      `).all(seed.id, since);
+      if (!rows.length) continue;
+
       const lock = await client.getMailboxLock(folder);
       try {
-        const uids = (await client.search({ since }, { uid: true })) || [];
-        if (!uids.length) continue;
+        const hits = await searchByMessageId(client, rows);
 
-        const fromUs = [];
-        for await (const m of client.fetch(uids.join(','), { uid: true, envelope: true }, { uid: true })) {
-          if (ourAddresses.has(String(m.envelope?.from?.[0]?.address || '').toLowerCase())) fromUs.push(m.uid);
-        }
-        if (!fromUs.length) continue;
-
-        const messages = [];
-        for await (const m of client.fetch(fromUs.join(','), { uid: true, source: true }, { uid: true })) {
-          messages.push({ uid: m.uid, source: m.source });
-        }
-
-        for (const m of messages) {
-          const row = findOutRowForSeed(seed.id, await simpleParser(m.source));
-          if (!row) continue;
+        for (const [uid, row] of hits) {
           const firstSeen = row.landed_in === 'unknown';
-          if (kind === 'inbox' && !firstSeen) continue; // already handled (incl. rescued ones)
-
           const flag = firstSeen && Math.random() < FLAG_CHANCE;
-          await client.messageFlagsAdd(String(m.uid), flag ? ['\\Seen', '\\Flagged'] : ['\\Seen'], { uid: true });
-          if (kind === 'spam') await client.messageMove(String(m.uid), 'INBOX', { uid: true });
+          await client.messageFlagsAdd(String(uid), flag ? ['\\Seen', '\\Flagged'] : ['\\Seen'], { uid: true });
+          if (kind === 'spam') await client.messageMove(String(uid), 'INBOX', { uid: true });
 
           // Reply plan: only thread starters, decided once
           let replyPlanned = row.reply_planned;
@@ -435,17 +438,15 @@ function classifyIncoming(mb, parsed, raw) {
   const from = String(parsed.from?.value?.[0]?.address || '').toLowerCase();
   const seed = from ? db.prepare('SELECT * FROM outreach_warmup_seeds WHERE lower(email) = ?').get(from) : null;
 
-  let row = parsed.messageId
-    ? db.prepare("SELECT * FROM outreach_warmup_messages WHERE message_id = ? AND direction = 'reply'").get(parsed.messageId)
-    : null;
-  const codes = content.findCodes(parsed.text);
-  if (!row && codes.length) {
-    row = db.prepare(`SELECT * FROM outreach_warmup_messages WHERE direction = 'reply' AND mailbox_id = ? AND code IN (${codes.map(() => '?').join(',')}) LIMIT 1`)
-      .get(mb.id, ...codes);
-  }
+  // In-Reply-To / References vs. the Message-IDs we stored
   const refs = idsIn([parsed.inReplyTo, ...[].concat(parsed.references || [])].join(' '));
+  const inList = refs.map(() => '?').join(',');
   const thread = refs.length
-    ? db.prepare(`SELECT * FROM outreach_warmup_messages WHERE message_id IN (${refs.map(() => '?').join(',')}) ORDER BY id DESC LIMIT 1`).get(...refs)
+    ? db.prepare(`SELECT * FROM outreach_warmup_messages WHERE message_id IN (${inList}) ORDER BY id DESC LIMIT 1`).get(...refs)
+    : null;
+  // The seed reply we recorded when sending it answers one of those messages
+  let row = refs.length
+    ? db.prepare(`SELECT * FROM outreach_warmup_messages WHERE direction = 'reply' AND mailbox_id = ? AND in_reply_to IN (${inList}) ORDER BY id DESC LIMIT 1`).get(mb.id, ...refs)
     : null;
 
   if (!seed && !row && !thread) {
@@ -471,7 +472,7 @@ function classifyIncoming(mb, parsed, raw) {
     const id = recordMsg({
       mailbox_id: mb.id, seed_id: seed ? seed.id : thread.seed_id, direction: 'reply',
       subject: parsed.subject || '', message_id: parsed.messageId || null,
-      in_reply_to: parsed.inReplyTo || null, references_header: refs.join(' ') || null, code: codes[0] || null,
+      in_reply_to: parsed.inReplyTo || null, references_header: refs.join(' ') || null,
       sent_at: toSql(parsed.date && !isNaN(parsed.date) ? parsed.date : new Date()), landed_in: 'inbox', opened_at: now,
     });
     row = db.prepare('SELECT * FROM outreach_warmup_messages WHERE id = ?').get(id);
