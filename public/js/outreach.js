@@ -1793,20 +1793,24 @@ function orRenderWarmup() {
 
   const seedRows = W.seeds.map(s => {
     const paused = s.status !== 'active';
+    const ro = s.provider === 'receive_only';
     return `
       <div class="or-mb-row">
         <div class="or-mb-main">
           <div class="or-mb-email">${esc(s.email)} ${orBadge(s.status === 'error' ? 'failed' : s.status)}
-            <span class="or-list-chip">${s.provider === 'gmail' ? 'Gmail' : 'Other'}</span>
-            ${s.can_automate ? '<span class="or-list-chip">auto-engage</span>' : '<span class="or-muted">manual</span>'}
+            <span class="or-list-chip">${OR_SEED_PROVIDERS[s.provider] || 'Other IMAP'}</span>
+            ${ro ? '' : s.can_automate ? '<span class="or-list-chip">auto-engage</span>' : '<span class="or-muted">manual</span>'}
           </div>
-          <div class="or-muted">received ${s.received_14} warmup emails in ${W.stats_days} days · last checked ${s.last_check_at ? orAgo(s.last_check_at) : 'never'}</div>
+          <div class="or-muted">received ${s.received_14} warmup emails in ${W.stats_days} days${ro ? '' : ` · last checked ${s.last_check_at ? orAgo(s.last_check_at) : 'never'}`}</div>
+          ${ro
+            ? '<div class="or-muted">Receive only — no engagement, not counted in inbox placement</div>'
+            : `<div class="or-muted" id="or-seed-spam-${s.id}">${orSpamFolderText(s.spam_folder)}</div>`}
           ${s.last_error ? `<div class="or-err-text or-mb-reason">${esc(s.last_error)}</div>` : ''}
           <div class="or-test-result" id="or-seed-test-${s.id}"></div>
         </div>
         <div class="or-mb-actions">
-          <button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'smtp')">Test SMTP</button>
-          <button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'imap')">Test IMAP</button>
+          ${ro ? '' : `<button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'smtp')">Test SMTP</button>
+          <button class="btn-secondary or-btn-sm" onclick="orTestSeed(${s.id},'imap')">Test IMAP</button>`}
           <button class="btn-secondary or-btn-sm" onclick="orSeedPause(${s.id}, ${paused})">${paused ? 'Resume' : 'Pause'}</button>
           <button class="btn-row-action" title="Edit" onclick="orEditSeed(${s.id})"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
           <button class="btn-row-action btn-row-delete" title="Delete" onclick="orDeleteSeed(${s.id})"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
@@ -1896,10 +1900,27 @@ async function orTestSeed(id, kind) {
     const r = await api(`/api/outreach/warmup/seeds/${id}/test-${kind}`, { method: 'POST' });
     el.className = `or-test-result ${r.ok ? 'is-ok' : 'is-err'}`;
     el.textContent = `${kind.toUpperCase()}: ${r.ok ? '✓ ' + (r.message || 'OK') : '✗ ' + r.error}`;
+    if (r.ok && r.spam_folder !== undefined) {
+      const seed = orWarmup.seeds.find(x => x.id === id);
+      if (seed) seed.spam_folder = r.spam_folder;
+      const spamEl = document.getElementById(`or-seed-spam-${id}`);
+      if (spamEl) spamEl.innerHTML = orSpamFolderText(r.spam_folder);
+    }
   } catch (err) {
     el.className = 'or-test-result is-err';
     el.textContent = `${kind.toUpperCase()}: ✗ ${err.message}`;
   }
+}
+
+const OR_SEED_PROVIDERS = {
+  gmail: 'Gmail', google_workspace: 'Google Workspace', other_imap: 'Other IMAP', receive_only: 'Receive only',
+};
+
+// null = never checked, '' = checked and none found
+function orSpamFolderText(folder) {
+  if (folder === null || folder === undefined) return 'Spam folder: not detected yet — run Test IMAP';
+  if (folder === '') return '<span class="or-err-text">Spam folder: none found — spam placement can’t be measured</span>';
+  return `Spam folder: <code class="or-folder">${esc(folder)}</code>`;
 }
 
 async function orSeedPause(id, isPaused) {
@@ -1910,13 +1931,24 @@ async function orSeedPause(id, isPaused) {
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
+const OR_SEED_HINTS = {
+  gmail: 'Gmail: turn on IMAP and use an app password (Google Account → Security → App passwords). Spam folder: [Gmail]/Spam.',
+  google_workspace: 'Google Workspace: IMAP must be allowed by the admin; use an app password. Spam folder: [Gmail]/Spam.',
+  other_imap: 'Any IMAP provider. The spam folder is detected automatically (IMAP \\Junk flag, else Junk / Spam / INBOX.Spam / INBOX.Junk / “Junk E-mail”).',
+  receive_only: 'Just receives warmup emails — no login, no opening or replying, and not counted in inbox placement (we can’t see where mail lands).',
+};
+
 function orSeedProviderChanged(sel) {
-  if (sel.value !== 'gmail') return;
   const form = document.getElementById('or-seed-form');
-  const defaults = { smtp_host: 'smtp.gmail.com', smtp_port: '465', imap_host: 'imap.gmail.com', imap_port: '993' };
-  for (const [k, v] of Object.entries(defaults)) {
-    const el = form.querySelector(`[name=${k}]`);
-    if (el && !el.value) el.value = v;
+  const p = sel.value;
+  form.querySelector('#or-seed-creds').hidden = p === 'receive_only';
+  form.querySelector('#or-seed-hint').textContent = OR_SEED_HINTS[p] || '';
+  if (p === 'gmail' || p === 'google_workspace') {
+    const defaults = { smtp_host: 'smtp.gmail.com', smtp_port: '465', imap_host: 'imap.gmail.com', imap_port: '993' };
+    for (const [k, v] of Object.entries(defaults)) {
+      const el = form.querySelector(`[name=${k}]`);
+      if (el && !el.value) el.value = v;
+    }
   }
 }
 
@@ -1930,13 +1962,14 @@ function orEditSeed(id) {
         <div class="form-group"><label>Email *</label><input name="email" type="email" value="${esc(s.email)}"></div>
         <div class="form-group"><label>Provider</label>
           <select name="provider" onchange="orSeedProviderChanged(this)">
-            <option value="gmail" ${s.provider === 'gmail' ? 'selected' : ''}>Gmail</option>
-            <option value="other" ${s.provider !== 'gmail' ? 'selected' : ''}>Other</option>
+            ${Object.entries(OR_SEED_PROVIDERS).map(([k, label]) =>
+              `<option value="${k}" ${(OR_SEED_PROVIDERS[s.provider] ? s.provider : 'other_imap') === k ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
         </div>
       </div>
-      <p class="or-muted">Gmail: turn on IMAP and use an app password (Google Account → Security → App passwords).</p>
+      <p class="or-muted" id="or-seed-hint"></p>
 
+      <div id="or-seed-creds">
       <div class="or-form-section">SMTP (for replies)</div>
       <div class="form-row">
         <div class="form-group"><label>Host</label><input name="smtp_host" value="${esc(s.smtp_host || '')}" placeholder="smtp.gmail.com"></div>
@@ -1957,19 +1990,22 @@ function orEditSeed(id) {
         ${orPassField('imap_pass', 'Password', id && s.has_imap_pass)}
       </div>
       <label class="or-check"><input type="checkbox" name="can_automate" ${s.can_automate ? 'checked' : ''}> Automate engagement (open, rescue from spam, star, reply)</label>
+      </div>
     </div>`,
     buttons: [
       { label: 'Cancel', onClick: orCloseModal },
       { label: 'Save seed', cls: 'btn-primary', onClick: () => orSaveSeed(id) },
     ],
   });
-  if (!id) orSeedProviderChanged(document.querySelector('#or-seed-form [name=provider]'));
+  orSeedProviderChanged(document.querySelector('#or-seed-form [name=provider]'));
 }
 
 async function orSaveSeed(id) {
   const v = orFormValues(document.getElementById('or-seed-form'));
   if (!v.email.trim()) return toast('Email is required', 'error');
-  const body = { ...v, email: v.email.trim(), can_automate: !!v.can_automate };
+  const body = v.provider === 'receive_only'
+    ? { email: v.email.trim(), provider: 'receive_only' } // server clears credentials
+    : { ...v, email: v.email.trim(), can_automate: !!v.can_automate };
   if (!v.smtp_pass) delete body.smtp_pass;
   if (!v.imap_pass) delete body.imap_pass;
   try {

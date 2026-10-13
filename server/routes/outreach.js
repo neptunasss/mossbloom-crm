@@ -826,6 +826,7 @@ router.get('/domain-health', requireAuth, (req, res) => {
     SELECT mailbox_id, SUM(landed_in = 'inbox') AS inbox, SUM(landed_in = 'spam') AS spam
     FROM outreach_warmup_messages
     WHERE direction = 'out' AND status = 'sent' AND sent_at >= ? AND landed_in IN ('inbox', 'spam')
+      AND seed_id NOT IN (SELECT id FROM outreach_warmup_seeds WHERE provider = 'receive_only')
     GROUP BY mailbox_id
   `).all(placeSince).map(r => [r.mailbox_id, r]));
 

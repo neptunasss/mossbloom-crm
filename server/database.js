@@ -596,6 +596,9 @@ try {
 try {
   db.prepare("INSERT OR IGNORE INTO outreach_system_settings (key, value) VALUES ('warmup_enabled', 'false')").run();
 } catch {}
+// Seed providers: gmail / google_workspace / other_imap / receive_only
+try { db.exec('ALTER TABLE outreach_warmup_seeds ADD COLUMN spam_folder TEXT'); } catch {}
+try { db.exec("UPDATE outreach_warmup_seeds SET provider = 'other_imap' WHERE provider IS NULL OR provider NOT IN ('gmail', 'google_workspace', 'other_imap', 'receive_only')"); } catch {}
 
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS outreach_worker_log (

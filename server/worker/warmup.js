@@ -92,12 +92,19 @@ function seedError(seed, message) {
   log('error', `warmup seed ${seed.email} → ERROR, skipped until fixed: ${message}`);
 }
 
+// Spread sends evenly: pick among the seeds that have received the fewest
+// warmup emails today (across all mailboxes), avoiding the mailbox's own domain.
 function pickSeed(mb, seeds) {
-  const last = db.prepare("SELECT seed_id FROM outreach_warmup_messages WHERE mailbox_id = ? AND direction = 'out' ORDER BY id DESC LIMIT 1").get(mb.id);
+  const counts = new Map(db.prepare(`
+    SELECT seed_id, COUNT(*) AS c FROM outreach_warmup_messages
+    WHERE direction = 'out' AND status IN ('sent', 'dry_run') AND sent_at >= ?
+    GROUP BY seed_id
+  `).all(toSql(localDayStart())).map(r => [r.seed_id, r.c]));
   let pool = seeds.filter(s => domainOf(s.email) !== domainOf(mb.email));
   if (!pool.length) pool = seeds;
-  if (pool.length > 1 && last) pool = pool.filter(s => s.id !== last.seed_id);
-  return pool[Math.floor(Math.random() * pool.length)];
+  const fewest = Math.min(...pool.map(s => counts.get(s.id) || 0));
+  const least = pool.filter(s => (counts.get(s.id) || 0) === fewest);
+  return least[Math.floor(Math.random() * least.length)];
 }
 
 // ── SMTP ─────────────────────────────────────────────────────────────────────
@@ -239,7 +246,7 @@ async function sendDueSeedReplies(dry) {
     JOIN outreach_warmup_seeds s ON s.id = o.seed_id
     JOIN outreach_mailboxes m ON m.id = o.mailbox_id
     WHERE o.direction = 'out' AND o.status = 'sent' AND o.reply_due_at <= ? AND o.replied_at IS NULL
-      AND s.status = 'active' AND s.can_automate = 1
+      AND s.status = 'active' AND s.can_automate = 1 AND s.provider != 'receive_only'
     ORDER BY o.reply_due_at LIMIT 20
   `).all(toSql(now));
 
@@ -304,16 +311,52 @@ async function warmupTick() {
 
 // ── Seed engagement (IMAP) ───────────────────────────────────────────────────
 
+// Seed providers: gmail / google_workspace / other_imap get IMAP engagement;
+// receive_only seeds just receive (no credentials, no placement data).
+const GOOGLE_PROVIDERS = ['gmail', 'google_workspace'];
+const SPAM_FALLBACK_NAMES = ['junk', 'spam', 'inbox.spam', 'inbox.junk', 'junk e-mail'];
+
+// Spam folder: Google's [Gmail]/Spam, else IMAP SPECIAL-USE \Junk, else a
+// common name (folder separator "/" or "." both accepted).
 function findSpamFolder(boxes, provider) {
-  if (provider === 'gmail') {
+  if (GOOGLE_PROVIDERS.includes(provider)) {
     const g = boxes.find(b => /^\[(gmail|google mail)\]\/spam$/i.test(b.path));
     if (g) return g.path;
   }
   const special = boxes.find(b => b.specialUse === '\\Junk');
   if (special) return special.path;
-  const named = boxes.find(b => /^(\[(gmail|google mail)\]\/spam|spam|junk|junk e-?mail|bulk mail|šlamštas|nepageidaujamas paštas)$/i.test(b.path) ||
-    /^(spam|junk|junk e-?mail|šlamštas)$/i.test(b.name));
-  return named ? named.path : null;
+  const norm = (p) => String(p).toLowerCase().replace(/\//g, '.');
+  for (const name of SPAM_FALLBACK_NAMES) {
+    const b = boxes.find(x => norm(x.path) === name);
+    if (b) return b.path;
+  }
+  return null;
+}
+
+// Log in, detect the spam folder and remember it on the seed ('' = none found)
+async function probeSeedImap(seed) {
+  if (seed.provider === 'receive_only') return { ok: false, error: 'receive-only seeds have no IMAP access' };
+  if (!seed.imap_host) return { ok: false, error: 'IMAP host not set' };
+  const port = Number(seed.imap_port) || 993;
+  const client = new ImapFlow({
+    host: seed.imap_host, port, secure: port === 993,
+    auth: { user: seed.imap_user || seed.email, pass: common.decrypt(seed.imap_pass) },
+    logger: false, socketTimeout: 20000,
+  });
+  client.on('error', () => {});
+  try {
+    await client.connect();
+    const spam = findSpamFolder(await client.list(), seed.provider);
+    db.prepare('UPDATE outreach_warmup_seeds SET spam_folder = ? WHERE id = ?').run(spam || '', seed.id);
+    return {
+      ok: true, spam_folder: spam || '',
+      message: `Logged in to ${seed.imap_host}:${port} — spam folder: ${spam ? `"${spam}"` : 'none found (spam placement can’t be measured)'}`,
+    };
+  } catch (err) {
+    return { ok: false, error: err.responseText || err.message };
+  } finally {
+    await client.logout().catch(() => client.close());
+  }
 }
 
 const normId = (id) => String(id || '').trim().replace(/^<?/, '<').replace(/>?$/, '>').toLowerCase();
@@ -349,6 +392,7 @@ async function engageSeed(seed) {
   const counts = { inbox: 0, spam: 0, replies_planned: 0 };
   try {
     const spamPath = findSpamFolder(await client.list(), seed.provider);
+    db.prepare('UPDATE outreach_warmup_seeds SET spam_folder = ? WHERE id = ?').run(spamPath || '', seed.id);
     const folders = [['INBOX', 'inbox']];
     if (spamPath) folders.push([spamPath, 'spam']);
     const since = toSql(new Date(Date.now() - SEED_LOOKBACK_DAYS * 86400000));
@@ -413,7 +457,7 @@ async function seedTick() {
   try {
     const due = db.prepare(`
       SELECT * FROM outreach_warmup_seeds
-      WHERE status = 'active' AND can_automate = 1 AND imap_host IS NOT NULL AND imap_host != ''
+      WHERE status = 'active' AND can_automate = 1 AND provider != 'receive_only' AND imap_host IS NOT NULL AND imap_host != ''
         AND (last_check_at IS NULL OR last_check_at <= ?)
     `).all(toSql(new Date(Date.now() - SEED_CHECK_EVERY_MS)));
     for (const seed of due) {
@@ -523,6 +567,7 @@ function checkPlacement(force = false) {
     FROM outreach_warmup_messages w
     JOIN outreach_mailboxes m ON m.id = w.mailbox_id
     JOIN outreach_domains d ON d.id = m.domain_id
+    JOIN outreach_warmup_seeds s ON s.id = w.seed_id AND s.provider != 'receive_only'
     WHERE w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.landed_in IN ('inbox', 'spam')
     GROUP BY m.domain_id
   `).all(since);
@@ -540,6 +585,6 @@ function checkPlacement(force = false) {
 
 module.exports = {
   warmupTick, seedTick, classifyIncoming, hideInWarmupFolder,
-  dailyTarget, rampDay, isForbiddenRecipient, checkPlacement,
+  dailyTarget, rampDay, isForbiddenRecipient, checkPlacement, probeSeedImap, findSpamFolder,
   RAMP_DAYS,
 };

@@ -3784,3 +3784,4 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
 .or-switch-sm input:checked + .or-switch-track { background: var(--green); }
 @media (max-width: 900px) { .or-dh-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .or-dh-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.or-folder { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; color: var(--text); }

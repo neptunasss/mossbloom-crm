@@ -8,10 +8,13 @@ const requireAuth = require('../middleware/auth');
 const db          = require('../database');
 const common      = require('../services/outreach-common');
 const { localDayStart, toSql } = require('../worker/time');
-const { dailyTarget, rampDay, isForbiddenRecipient, RAMP_DAYS } = require('../worker/warmup');
+const { dailyTarget, rampDay, isForbiddenRecipient, probeSeedImap, RAMP_DAYS } = require('../worker/warmup');
 
 const STATS_DAYS = 14;
-const GMAIL = { smtp_host: 'smtp.gmail.com', smtp_port: 465, imap_host: 'imap.gmail.com', imap_port: 993 };
+const GOOGLE = { smtp_host: 'smtp.gmail.com', smtp_port: 465, imap_host: 'imap.gmail.com', imap_port: 993 };
+const PROVIDERS = ['gmail', 'google_workspace', 'other_imap', 'receive_only'];
+const CRED_FIELDS = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'imap_host', 'imap_port', 'imap_user', 'imap_pass'];
+const NOT_RECEIVE_ONLY = "AND w.seed_id NOT IN (SELECT id FROM outreach_warmup_seeds WHERE provider = 'receive_only')";
 
 function redactSeed(s) {
   const { smtp_pass, imap_pass, ...rest } = s;
@@ -34,9 +37,9 @@ router.get('/', requireAuth, (req, res) => {
       (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out'
         AND w.sent_at >= ? AND (w.status = 'sent' OR (? = 1 AND w.status = 'dry_run'))) AS today,
       (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ?) AS sent,
-      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.landed_in = 'inbox') AS inbox,
-      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.landed_in = 'spam') AS spam,
-      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.rescued_from_spam = 1) AS rescued,
+      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.landed_in = 'inbox' ${NOT_RECEIVE_ONLY}) AS inbox,
+      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.landed_in = 'spam' ${NOT_RECEIVE_ONLY}) AS spam,
+      (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ? AND w.rescued_from_spam = 1 ${NOT_RECEIVE_ONLY}) AS rescued,
       (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'reply' AND w.sent_at >= ?) AS replies,
       (SELECT COUNT(*) FROM outreach_warmup_messages w WHERE w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'failed' AND w.sent_at >= ?) AS failed
     FROM outreach_mailboxes m
@@ -56,11 +59,15 @@ router.get('/', requireAuth, (req, res) => {
 
   const domains = db.prepare(`
     SELECT d.id, d.domain,
-      COALESCE(SUM(w.landed_in = 'inbox'), 0) AS inbox, COALESCE(SUM(w.landed_in = 'spam'), 0) AS spam,
+      COALESCE(SUM(w.landed_in = 'inbox' AND w.seed_provider != 'receive_only'), 0) AS inbox,
+      COALESCE(SUM(w.landed_in = 'spam' AND w.seed_provider != 'receive_only'), 0) AS spam,
       COUNT(w.id) AS sent
     FROM outreach_domains d
     LEFT JOIN outreach_mailboxes m ON m.domain_id = d.id
-    LEFT JOIN outreach_warmup_messages w ON w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ?
+    LEFT JOIN (
+      SELECT wm.*, COALESCE(s.provider, '') AS seed_provider FROM outreach_warmup_messages wm
+      LEFT JOIN outreach_warmup_seeds s ON s.id = wm.seed_id
+    ) w ON w.mailbox_id = m.id AND w.direction = 'out' AND w.status = 'sent' AND w.sent_at >= ?
     GROUP BY d.id ORDER BY d.domain
   `).all(since7).map(d => ({ ...d, placement: pct(d.inbox, d.inbox + d.spam) }));
 
@@ -110,12 +117,23 @@ function seedBody(body, isNew) {
   const out = {};
   for (const f of SEED_FIELDS) if (body[f] !== undefined) out[f] = body[f];
   if (out.email !== undefined) out.email = String(out.email).trim().toLowerCase();
-  if (out.provider !== undefined) out.provider = out.provider === 'gmail' ? 'gmail' : 'other';
+  if (out.provider !== undefined) out.provider = PROVIDERS.includes(out.provider) ? out.provider : 'other_imap';
+  if (isNew && out.provider === undefined) out.provider = 'other_imap';
   if (out.can_automate !== undefined) out.can_automate = out.can_automate ? 1 : 0;
   for (const p of ['smtp_port', 'imap_port']) if (out[p] !== undefined) out[p] = out[p] === '' || out[p] === null ? null : parseInt(out[p], 10);
-  if (isNew && out.provider === 'gmail') {
-    for (const [k, v] of Object.entries(GMAIL)) if (!out[k]) out[k] = v;
+
+  if (out.provider === 'receive_only') {
+    // No credentials, no engagement; wipe anything saved before
+    for (const f of CRED_FIELDS) out[f] = null;
+    out.can_automate = 0;
+    out.spam_folder = null;
+    return out;
   }
+  if (isNew && (out.provider === 'gmail' || out.provider === 'google_workspace')) {
+    for (const [k, v] of Object.entries(GOOGLE)) if (!out[k]) out[k] = v;
+  }
+  // Server or provider changed → spam folder must be detected again
+  if (out.provider !== undefined || out.imap_host !== undefined) out.spam_folder = null;
   // Passwords: only when given; empty/omitted keeps the saved one
   for (const p of ['smtp_pass', 'imap_pass']) {
     if (!out[p]) delete out[p];
@@ -175,13 +193,14 @@ router.post('/seeds/:id/resume', requireAuth, (req, res) => {
 router.post('/seeds/:id/test-smtp', requireAuth, async (req, res) => {
   const s = db.prepare('SELECT * FROM outreach_warmup_seeds WHERE id = ?').get(parseInt(req.params.id, 10));
   if (!s) return res.status(404).json({ error: 'not found' });
+  if (s.provider === 'receive_only') return res.json({ ok: false, error: 'receive-only seeds have no SMTP access' });
   res.json(await common.testSmtpLogin(s));
 });
 
 router.post('/seeds/:id/test-imap', requireAuth, async (req, res) => {
   const s = db.prepare('SELECT * FROM outreach_warmup_seeds WHERE id = ?').get(parseInt(req.params.id, 10));
   if (!s) return res.status(404).json({ error: 'not found' });
-  res.json(await common.testImapLogin(s));
+  res.json(await probeSeedImap(s)); // also detects + saves the spam folder
 });
 
 module.exports = router;
