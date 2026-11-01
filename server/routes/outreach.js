@@ -377,6 +377,33 @@ router.delete('/leads/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/outreach/leads/bulk-delete — body: { lead_ids: [1,2,3] } or { filter: { status, search, industry, city, list_name } }
+// Cancels pending emails and removes the leads from campaigns before deleting them.
+router.post('/leads/bulk-delete', requireAuth, (req, res) => {
+  const { lead_ids, filter } = req.body || {};
+  let ids;
+  if (Array.isArray(lead_ids) && lead_ids.length) {
+    ids = lead_ids.map(n => parseInt(n, 10)).filter(Number.isInteger);
+  } else if (filter && typeof filter === 'object') {
+    const { where, params } = leadFilter(filter);
+    ids = db.prepare(`SELECT id FROM outreach_leads WHERE ${where}`).all(...params).map(r => r.id);
+  } else {
+    return res.status(400).json({ error: 'lead_ids array or filter required' });
+  }
+  const cancel = db.prepare("UPDATE outreach_email_queue SET status = 'cancelled', error_message = 'lead deleted' WHERE lead_id = ? AND status = 'pending'");
+  const unlink = db.prepare('DELETE FROM outreach_campaign_leads WHERE lead_id = ?');
+  const del = db.prepare('DELETE FROM outreach_leads WHERE id = ?');
+  let deleted = 0;
+  db.transaction(() => {
+    for (const id of ids) {
+      cancel.run(id);
+      unlink.run(id);
+      deleted += del.run(id).changes;
+    }
+  })();
+  res.json({ deleted });
+});
+
 router.post('/leads/:id/unsubscribe', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const lead = db.prepare('SELECT * FROM outreach_leads WHERE id = ?').get(id);

@@ -814,17 +814,40 @@ function orRenderBulkbar() {
         <span class="or-muted">— ${esc(orFilterSummary(L.allFilter))}</span></span>
       <div class="filter-controls">
         <button class="btn-secondary or-btn-sm" onclick="orSelectAllMatching(false)">Clear</button>
+        <button class="btn-primary or-btn-danger or-btn-sm" onclick="orDeleteSelectedLeads()">Delete</button>
         <button class="btn-primary or-btn-sm" onclick="orAddSelectedToCampaign()">Add to campaign</button>
       </div>`;
   } else if (n) {
     bar.innerHTML = `<span><strong>${n}</strong> lead${n === 1 ? '' : 's'} selected ${L.total > n ? `· ${selectAllBtn}` : ''}</span>
       <div class="filter-controls">
         <button class="btn-secondary or-btn-sm" onclick="OR.leads.selected.clear();orRenderLeads()">Clear</button>
+        <button class="btn-primary or-btn-danger or-btn-sm" onclick="orDeleteSelectedLeads()">Delete</button>
         <button class="btn-primary or-btn-sm" onclick="orAddSelectedToCampaign()">Add to campaign</button>
       </div>`;
   } else {
     bar.innerHTML = `<span class="or-muted">Tick leads to add them to a campaign, or</span> ${selectAllBtn}`;
   }
+}
+
+async function orDeleteSelectedLeads() {
+  const L = OR.leads;
+  const bySegment = L.allMatching;
+  const count = bySegment ? L.total : L.selected.size;
+  if (!count) return;
+  const what = `<strong>${count}</strong> lead${count === 1 ? '' : 's'}`;
+  if (!await orConfirm(`Delete ${count} lead${count === 1 ? '' : 's'}?`,
+    `<p>Delete ${what}${bySegment ? ` matching <em>${esc(orFilterSummary(L.allFilter))}</em>` : ''}? Pending emails to them are cancelled and they are removed from campaigns. This cannot be undone.</p>`,
+    { okLabel: 'Delete', danger: true })) return;
+  try {
+    const body = bySegment ? { filter: L.allFilter } : { lead_ids: [...L.selected] };
+    const r = await api('/api/outreach/leads/bulk-delete', { method: 'POST', body: JSON.stringify(body) });
+    toast(`${r.deleted} lead${r.deleted === 1 ? '' : 's'} deleted`);
+    L.selected.clear();
+    L.allMatching = false;
+    L.allFilter = null;
+    L.offset = 0;
+    orLoadLeads();
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 async function orAddSelectedToCampaign() {
