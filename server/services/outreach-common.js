@@ -131,6 +131,17 @@ function workerLog(level, message, mailboxId = null) {
   if (level === 'error') console.error(line); else console.log(line);
 }
 
+// YOLO mode: keep sending through bounce/placement/SMTP-error auto-pauses.
+function isYolo() {
+  return getSetting('yolo_mode', 'false') === 'true';
+}
+
+// Today's campaign send cap for a mailbox (worker + dashboard)
+function effectiveDailyLimit(mb) {
+  if (mb.warmup_mode && !isYolo()) return mb.warmup_daily_limit ?? mb.warmup_start_limit;
+  return mb.daily_limit;
+}
+
 // ── Template rendering (worker + UI preview) ────────────────────────────────
 
 const escapeHtml = (s) => String(s)
@@ -166,7 +177,7 @@ function cancelLeadQueue(leadId, reason) {
   return r.changes;
 }
 
-// status: 'replied' | 'unsubscribed' | 'bounced'. Atomic.
+// status: 'replied' | 'unsubscribed' | 'bounced' | 'invalid'. Atomic.
 const stopLead = db.transaction((leadId, status, { suppress = false, reason = status } = {}) => {
   const lead = db.prepare('SELECT id, email FROM outreach_leads WHERE id = ?').get(leadId);
   if (!lead) return 0;
@@ -226,7 +237,7 @@ module.exports = {
   testSmtpLogin, testImapLogin,
   encrypt, decrypt, isEncrypted, encryptExistingMailboxPasswords,
   signLeadToken, verifyLeadToken, publicBaseUrl,
-  getSetting, setSetting, workerLog,
+  getSetting, setSetting, workerLog, isYolo, effectiveDailyLimit,
   render, htmlToText, escapeHtml,
   cancelLeadQueue, stopLead,
 };

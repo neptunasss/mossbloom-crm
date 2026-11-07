@@ -5,12 +5,17 @@ const nodemailer = require('nodemailer');
 const db         = require('../database');
 const common     = require('../services/outreach-common');
 const { inSendWindow, nextSendWindow, toSql } = require('./time');
+const { hasMx } = require('./mx');
 
-const { workerLog: log, getSetting, render, htmlToText, escapeHtml } = common;
+const { workerLog: log, getSetting, isYolo, effectiveDailyLimit, render, htmlToText, escapeHtml } = common;
 
 const SENDABLE_MAILBOX = ['active', 'warmup'];
-const STOPPED_LEAD     = ['replied', 'bounced', 'unsubscribed'];
+const STOPPED_LEAD     = ['replied', 'bounced', 'unsubscribed', 'invalid'];
 const MAX_PENDING_STEP1_PER_MAILBOX = 10;
+// YOLO: a failed email is retried later instead of pausing the mailbox
+const MAX_SEND_RETRIES = 5;
+const RETRY_DELAY_MS   = 30 * 60000;
+const TEMP_PAUSE_MS    = 3600000;
 // Shared with the dashboard's domain health section (server/routes/outreach.js)
 const {
   SMTP_ERRORS_BEFORE_PAUSE, BOUNCE_WINDOW, BOUNCE_MIN_SENDS, BOUNCE_RATE_LIMIT,
@@ -43,10 +48,6 @@ function countWarmup(mailboxId, since, dry) {
   `).get(mailboxId, since, dry ? 1 : 0).c;
 }
 
-function effectiveDailyLimit(mb) {
-  return mb.warmup_mode ? (mb.warmup_daily_limit ?? mb.warmup_start_limit) : mb.daily_limit;
-}
-
 // ── Mailbox health ───────────────────────────────────────────────────────────
 
 function pauseMailbox(mailboxId, reason) {
@@ -57,8 +58,29 @@ function pauseMailbox(mailboxId, reason) {
   if (r.changes) log('warn', `mailbox AUTO-PAUSED: ${reason}`, mailboxId);
 }
 
+// YOLO: paused for a fixed time; resumeExpiredPauses() brings it back.
+function pauseMailboxFor(mailboxId, reason, ms) {
+  const r = db.prepare(`
+    UPDATE outreach_mailboxes SET status = 'paused', pause_reason = ?, paused_until = ?
+    WHERE id = ? AND status != 'paused'
+  `).run(reason, toSql(new Date(Date.now() + ms)), mailboxId);
+  if (r.changes) log('warn', `mailbox paused for ${ms / 60000} min: ${reason}`, mailboxId);
+}
+
+function resumeExpiredPauses() {
+  const rows = db.prepare(`
+    UPDATE outreach_mailboxes
+    SET status = CASE WHEN warmup_mode THEN 'warmup' ELSE 'active' END,
+        pause_reason = NULL, paused_until = NULL, consecutive_smtp_errors = 0
+    WHERE status = 'paused' AND paused_until IS NOT NULL AND paused_until <= ?
+    RETURNING id
+  `).all(toSql(new Date()));
+  for (const r of rows) log('info', 'mailbox resumed automatically after its timed pause', r.id);
+}
+
 // Mailbox: bounce rate over its last 50 sends, judged only from 20 sends on.
-// Then the mailbox's domain: last 7 days across all its mailboxes.
+// Then the mailbox's domain: last 7 days across all its mailboxes. In YOLO
+// mode the rate is still recorded for the dashboard but nothing is paused.
 function checkBounceRate(mailboxId) {
   const rows = db.prepare(`
     SELECT status FROM outreach_email_queue
@@ -69,7 +91,7 @@ function checkBounceRate(mailboxId) {
     const bounced = rows.filter(r => r.status === 'bounced').length;
     const rate = bounced / rows.length;
     db.prepare('UPDATE outreach_mailboxes SET bounce_rate = ? WHERE id = ?').run(Math.round(rate * 10000) / 100, mailboxId);
-    if (rows.length >= BOUNCE_MIN_SENDS && rate > BOUNCE_RATE_LIMIT) {
+    if (!isYolo() && rows.length >= BOUNCE_MIN_SENDS && rate > BOUNCE_RATE_LIMIT) {
       pauseMailbox(mailboxId, `bounce rate ${(rate * 100).toFixed(1)}% (${bounced}/${rows.length} of last sends) > ${BOUNCE_RATE_LIMIT * 100}%`);
     }
   }
@@ -78,6 +100,7 @@ function checkBounceRate(mailboxId) {
 }
 
 function checkDomainBounceRate(domainId) {
+  if (isYolo()) return;
   const since = toSql(new Date(Date.now() - DOMAIN_WINDOW_DAYS * 86400000));
   const { sent, bounced } = db.prepare(`
     SELECT COUNT(*) AS sent, COALESCE(SUM(q.status = 'bounced'), 0) AS bounced
@@ -89,7 +112,12 @@ function checkDomainBounceRate(domainId) {
 
   const domain = db.prepare('SELECT domain FROM outreach_domains WHERE id = ?').get(domainId);
   const reason = `domain ${domain ? domain.domain : '#' + domainId} bounce rate ${(bounced / sent * 100).toFixed(1)}% (${bounced}/${sent} sends, last ${DOMAIN_WINDOW_DAYS} days) > ${BOUNCE_RATE_LIMIT * 100}%`;
-  const boxes = db.prepare("SELECT id FROM outreach_mailboxes WHERE domain_id = ? AND status != 'paused'").all(domainId);
+  // A mailbox with too few sends of its own in the window is left running
+  const boxes = db.prepare(`
+    SELECT m.id FROM outreach_mailboxes m
+    WHERE m.domain_id = ? AND m.status != 'paused'
+      AND (SELECT COUNT(*) FROM outreach_email_queue q WHERE q.mailbox_id = m.id AND q.sent_at >= ?) >= ?
+  `).all(domainId, since, BOUNCE_MIN_SENDS);
   if (!boxes.length) return;
   log('warn', `DOMAIN AUTO-PAUSE: ${reason} — pausing ${boxes.length} mailbox(es)`);
   for (const b of boxes) pauseMailbox(b.id, reason);
@@ -304,6 +332,20 @@ async function processItem(item, dry) {
     return;
   }
 
+  // null = DNS gave no definite answer: send anyway, SMTP will sort it out
+  if (await hasMx(lead.email) === false) {
+    if (dry) {
+      db.prepare("UPDATE outreach_email_queue SET status = 'pending', claimed_at = NULL, dry_run_at = ? WHERE id = ?")
+        .run(toSql(new Date()), item.id);
+      log('info', `[DRY RUN] would mark lead ${lead.id} invalid — no MX record for ${lead.email}`, mb.id);
+      return;
+    }
+    cancelItem(item.id, 'no MX record for recipient domain');
+    common.stopLead(lead.id, 'invalid');
+    log('warn', `queue #${item.id}: no MX record for ${lead.email} — lead marked invalid, not counted as a bounce`, mb.id);
+    return;
+  }
+
   let unsubUrl;
   try {
     unsubUrl = `${common.publicBaseUrl() || 'https://PUBLIC_URL-NOT-SET'}/u/${common.signLeadToken(lead.id)}`;
@@ -366,7 +408,55 @@ async function processItem(item, dry) {
   checkBounceRate(mb.id);
 }
 
+// YOLO only: failures that are about the mailbox, not this one email.
+function providerBlock(err) {
+  if (err.code === 'EAUTH' || err.responseCode === 535) return 'auth failure';
+  const text = `${err.response || ''} ${err.message || ''}`;
+  if (err.responseCode === 421 || (err.responseCode === 550 && /\b5\.7\.\d+/.test(text)) || /too many|blocked/i.test(text)) {
+    return 'provider rate limit/block';
+  }
+  return null;
+}
+
+// The connection died with no server reply, possibly after the message went
+// out. Retrying could double-send, same as recoverStuckSending().
+function maybeDelivered(err) {
+  if (err.responseCode) return false;
+  return err.timeoutType === 'SOCKET_TIMEOUT' || err.code === 'ECONNECTION' || (err.code === 'ESOCKET' && err.syscall !== 'connect');
+}
+
+const canRetry = (item) => (item.retry_count || 0) < MAX_SEND_RETRIES;
+
+function retryItem(item, err, delayMs, { countAttempt = true } = {}) {
+  db.prepare(`
+    UPDATE outreach_email_queue
+    SET status = 'pending', claimed_at = NULL, scheduled_at = ?, retry_count = COALESCE(retry_count, 0) + ?, error_message = ?
+    WHERE id = ?
+  `).run(toSql(new Date(Date.now() + delayMs)), countAttempt ? 1 : 0, String(err.message).slice(0, 1000), item.id);
+}
+
+function failItem(item, err) {
+  db.prepare("UPDATE outreach_email_queue SET status = 'failed', error_message = ? WHERE id = ?")
+    .run(String(err.message).slice(0, 1000), item.id);
+  db.prepare(`UPDATE outreach_campaign_leads SET status = 'failed' WHERE campaign_id = ? AND lead_id = ? AND status = 'queued'`)
+    .run(item.campaign_id, item.lead_id);
+}
+
 function handleSendError(item, mb, lead, msg, err) {
+  const yolo = isYolo();
+  // Checked before the bounce branch: a 550 5.7.x at RCPT is the provider
+  // refusing this mailbox, not a dead address, so the lead must not be suppressed.
+  const block = yolo ? providerBlock(err) : null;
+  if (block) {
+    // A bad password isn't this email's fault, so it never uses up its retries.
+    // A block does, or one recipient's 5.7.x would pause the mailbox every hour forever.
+    const auth = block === 'auth failure';
+    if (auth || canRetry(item)) retryItem(item, err, TEMP_PAUSE_MS, { countAttempt: !auth });
+    else failItem(item, err);
+    pauseMailboxFor(mb.id, `${block}, resumes automatically in 1 hour (${String(err.message).slice(0, 300)})`, TEMP_PAUSE_MS);
+    return;
+  }
+
   const recipientRejected = err.responseCode >= 500 && /RCPT/i.test(err.command || '');
   if (recipientRejected) {
     // Hard bounce at SMTP time — counts as a send + bounce for this mailbox
@@ -383,16 +473,15 @@ function handleSendError(item, mb, lead, msg, err) {
     log('warn', `queue #${item.id}: recipient ${lead.email} rejected (${err.responseCode}) — lead marked bounced + suppressed`, mb.id);
     checkBounceRate(mb.id);
   } else {
-    db.prepare("UPDATE outreach_email_queue SET status = 'failed', error_message = ? WHERE id = ?")
-      .run(String(err.message).slice(0, 1000), item.id);
-    db.prepare(`UPDATE outreach_campaign_leads SET status = 'failed' WHERE campaign_id = ? AND lead_id = ? AND status = 'queued'`)
-      .run(item.campaign_id, item.lead_id);
+    const retry = yolo && canRetry(item) && !maybeDelivered(err);
+    if (retry) retryItem(item, err, RETRY_DELAY_MS);
+    else failItem(item, err);
     const { consecutive_smtp_errors: n } = db.prepare(`
       UPDATE outreach_mailboxes SET consecutive_smtp_errors = COALESCE(consecutive_smtp_errors, 0) + 1, next_send_at = ?
       WHERE id = ? RETURNING consecutive_smtp_errors
     `).get(toSql(new Date(Date.now() + randomGapMs())), mb.id);
-    log('error', `queue #${item.id} SMTP error (${n} in a row): ${err.message}`, mb.id);
-    if (n >= SMTP_ERRORS_BEFORE_PAUSE) pauseMailbox(mb.id, `${n} SMTP errors in a row (last: ${err.message})`);
+    log('error', `queue #${item.id} SMTP error (${n} in a row)${retry ? ', will retry' : ''}: ${err.message}`, mb.id);
+    if (!yolo && n >= SMTP_ERRORS_BEFORE_PAUSE) pauseMailbox(mb.id, `${n} SMTP errors in a row (last: ${err.message})`);
   }
 }
 
@@ -401,6 +490,8 @@ function handleSendError(item, mb, lead, msg, err) {
 let lastConfigError = 0;
 
 async function sendTick() {
+  resumeExpiredPauses();
+
   const dry = getSetting('dry_run', 'true') !== 'false';
   if (getSetting('global_paused', 'false') === 'true') return;
 

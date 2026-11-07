@@ -29,6 +29,7 @@ const OR_STATUS = {
   replied:      ['#e8faf0', '#248a3d'],
   bounced:      ['#fff0ef', '#cc2f26'],
   unsubscribed: ['#f5eeff', '#8a2be2'],
+  invalid:      ['rgba(0,0,0,0.06)', '#86868b'],
   skipped:      ['rgba(0,0,0,0.06)', '#86868b'],
   failed:       ['#fff0ef', '#cc2f26'],
 };
@@ -235,6 +236,7 @@ function orRenderDomainHealth(health) {
 function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
   const paused = settings.global_paused;
   const dry = settings.dry_run;
+  const yolo = settings.yolo_mode;
 
   const kpi = (label, value, sub = '', tone = '') => `
     <div class="prod-stat-card or-kpi ${tone}">
@@ -286,12 +288,18 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
           <div class="or-state-sub">${paused ? 'The worker sends nothing until you resume.' : `${kpis.pending} email(s) queued · weekdays 08:00–17:00 Vilnius`}</div>
         </div>
         ${dry ? '<span class="or-dry-badge" title="The worker logs what it would send but sends nothing">DRY RUN</span>' : '<span class="or-live-badge">LIVE</span>'}
+        ${yolo ? '<span class="or-yolo-badge" title="Bounce and inbox placement auto-pauses are off">YOLO</span>' : ''}
       </div>
       <div class="or-topbar-actions">
         <label class="or-switch" title="Dry run: log instead of sending">
           <input type="checkbox" ${dry ? 'checked' : ''} onchange="orToggleDryRun(this)">
           <span class="or-switch-track"></span>
           <span>Dry run</span>
+        </label>
+        <label class="or-switch" title="YOLO mode: keep sending through bounce, placement and SMTP error auto-pauses">
+          <input type="checkbox" ${yolo ? 'checked' : ''} onchange="orToggleYolo(this)">
+          <span class="or-switch-track"></span>
+          <span>YOLO mode</span>
         </label>
         <button class="or-pause-btn ${paused ? 'is-paused' : ''}" onclick="orTogglePause(${paused})">
           ${paused ? '▶ Resume outreach' : '⏸ Pause all outreach'}
@@ -305,7 +313,7 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
       ${kpi('Replies', kpis.replies, kpis.untagged ? `<a href="#" onclick="switchView('or-inbox');return false">${kpis.untagged} to tag →</a>` : '')}
       ${kpi('Positive', kpis.positive, '', kpis.positive ? 'or-kpi-good' : '')}
       ${kpi('Bounces', kpis.bounces)}
-      ${kpi('Bounce rate', `${kpis.bounce_rate}%`, 'auto-pause above 3%', bounceTone)}
+      ${kpi('Bounce rate', `${kpis.bounce_rate}%`, yolo ? 'auto-pause off (YOLO)' : 'auto-pause above 3%', bounceTone)}
       ${kpi('Unsubscribes', kpis.unsubscribes)}
     </div>
 
@@ -359,6 +367,28 @@ async function orToggleDryRun(input) {
   try {
     await api('/api/outreach/settings/dry-run', { method: 'POST', body: JSON.stringify({ dry_run: wantDry }) });
     toast(wantDry ? 'Dry run ON — nothing will be sent' : 'Dry run OFF — live sending enabled');
+    orLoadDashboard(true);
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+async function orToggleYolo(input) {
+  const wantYolo = input.checked;
+  input.checked = !wantYolo; // revert until confirmed / saved
+  if (wantYolo) {
+    const ok = await orConfirm('Turn on YOLO mode?', `
+      <p class="or-confirm-lead">Mailboxes and domains <strong>will no longer auto-pause</strong> for bounce rate,
+      inbox placement or repeated SMTP errors. High bounce rates can damage your domains' sender reputation.</p>
+      <ul class="or-confirm-list">
+        <li>Mailboxes in warmup send up to their full daily limit instead of the warmup ramp.</li>
+        <li>Login failures and provider blocks still pause a mailbox, for 1 hour.</li>
+        <li>Suppressions, unsubscribes, replies, the send window and hourly limits still apply.</li>
+        <li>Mailboxes that are already paused stay paused until you resume them.</li>
+      </ul>`, { okLabel: 'Yes, turn on YOLO mode', danger: true });
+    if (!ok) return;
+  }
+  try {
+    await api('/api/outreach/settings/yolo', { method: 'POST', body: JSON.stringify({ yolo_mode: wantYolo }) });
+    toast(wantYolo ? 'YOLO mode ON' : 'YOLO mode OFF — auto-pauses are back');
     orLoadDashboard(true);
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
@@ -681,7 +711,7 @@ function orRenderLeadsShell() {
     <div class="filters-bar">
       <div class="filter-controls">
         <select class="filter-select" onchange="orSetLeadFilter('status', this.value)">
-          ${['all', 'new', 'contacted', 'replied', 'bounced', 'unsubscribed'].map(s =>
+          ${['all', 'new', 'contacted', 'replied', 'bounced', 'unsubscribed', 'invalid'].map(s =>
             `<option value="${s}" ${L.status === s ? 'selected' : ''}>${s === 'all' ? 'All statuses' : s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
         </select>
         ${orFacetSelect('industry', L.industry, `onchange="orSetLeadFilter('industry', this.value)"`)}

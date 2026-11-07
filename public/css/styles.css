@@ -3536,12 +3536,13 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
 .or-state-title { font-weight: 600; font-size: 15px; }
 .or-topbar.is-paused .or-state-title { color: #cc2f26; }
 .or-state-sub { font-size: 12.5px; color: var(--text-secondary); }
-.or-dry-badge, .or-live-badge {
+.or-dry-badge, .or-live-badge, .or-yolo-badge {
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
   border-radius: 6px; padding: 3px 8px;
 }
 .or-dry-badge { background: var(--yellow-pastel); color: #8a6d00; border: 1px solid rgba(255,214,10,0.7); }
 .or-live-badge { background: var(--green-pastel); color: var(--green-deep); border: 1px solid rgba(52,199,89,0.4); }
+.or-yolo-badge { background: #fff0ef; color: #cc2f26; border: 1px solid rgba(204,47,38,0.4); }
 .or-topbar-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .or-pause-btn {
   border: none; border-radius: 10px; cursor: pointer; font-family: inherit;

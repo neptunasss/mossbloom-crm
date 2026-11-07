@@ -558,6 +558,7 @@ async function hideInWarmupFolder(client, uid, mailboxId) {
 let lastPlacementCheck = 0;
 
 function checkPlacement(force = false) {
+  if (common.isYolo()) return;
   if (!force && Date.now() - lastPlacementCheck < 30 * 60000) return;
   lastPlacementCheck = Date.now();
   const since = toSql(new Date(Date.now() - HEALTH.PLACEMENT_WINDOW_DAYS * 86400000));

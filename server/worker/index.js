@@ -89,7 +89,7 @@ const dailyLoop = guard('daily jobs', () => { runWarmup(); runMaintenance(); });
 
 function start() {
   const dry = getSetting('dry_run', 'true') !== 'false';
-  log('info', `worker started (pid ${process.pid}) — dry_run=${dry}, global_paused=${getSetting('global_paused', 'false')}, warmup=${getSetting('warmup_enabled', 'false')}`);
+  log('info', `worker started (pid ${process.pid}) — dry_run=${dry}, global_paused=${getSetting('global_paused', 'false')}, warmup=${getSetting('warmup_enabled', 'false')}, yolo=${common.isYolo()}`);
   if (!process.env.ENCRYPTION_KEY) {
     log('warn', 'ENCRYPTION_KEY not set — mailbox passwords cannot be decrypted, live sending and IMAP disabled');
   } else {

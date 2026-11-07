@@ -523,6 +523,7 @@ try {
   // Safety default: worker logs what it would send but never sends until
   // this is switched to 'false' manually.
   osi.run('dry_run', 'true');
+  osi.run('yolo_mode', 'false');
 } catch {}
 
 // Outreach worker columns/tables
@@ -543,6 +544,8 @@ try { db.exec('ALTER TABLE outreach_replies ADD COLUMN from_email TEXT'); } catc
 try { db.exec('ALTER TABLE outreach_replies ADD COLUMN message_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE outreach_replies ADD COLUMN deal_id INTEGER'); } catch {}
 try { db.exec("ALTER TABLE outreach_leads ADD COLUMN list_name TEXT DEFAULT ''"); } catch {}
+try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN paused_until TEXT'); } catch {}
+try { db.exec('ALTER TABLE outreach_email_queue ADD COLUMN retry_count INTEGER DEFAULT 0'); } catch {}
 
 // Warmup (seed inboxes) — per-mailbox switch + pacing on outreach_mailboxes
 try { db.exec('ALTER TABLE outreach_mailboxes ADD COLUMN seed_warmup_enabled INTEGER DEFAULT 0'); } catch {}

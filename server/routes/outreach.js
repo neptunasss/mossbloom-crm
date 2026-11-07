@@ -10,10 +10,7 @@ const db          = require('../database');
 const common      = require('../services/outreach-common');
 const { localDayStart, localWeekStart, toSql } = require('../worker/time');
 
-// Same formula the worker uses for today's send cap
-function effectiveLimit(m) {
-  return m.warmup_mode ? (m.warmup_daily_limit ?? m.warmup_start_limit) : m.daily_limit;
-}
+const effectiveLimit = common.effectiveDailyLimit;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -223,7 +220,8 @@ router.post('/mailboxes/:id/pause', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id FROM outreach_mailboxes WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  db.prepare("UPDATE outreach_mailboxes SET status = 'paused' WHERE id = ?").run(id);
+  // paused_until cleared: a manual pause must not auto-resume
+  db.prepare("UPDATE outreach_mailboxes SET status = 'paused', paused_until = NULL WHERE id = ?").run(id);
   res.json({ ok: true });
 });
 
@@ -231,7 +229,7 @@ router.post('/mailboxes/:id/resume', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id, warmup_mode FROM outreach_mailboxes WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
-  db.prepare('UPDATE outreach_mailboxes SET status = ?, pause_reason = NULL, consecutive_smtp_errors = 0 WHERE id = ?')
+  db.prepare('UPDATE outreach_mailboxes SET status = ?, pause_reason = NULL, paused_until = NULL, consecutive_smtp_errors = 0 WHERE id = ?')
     .run(row.warmup_mode ? 'warmup' : 'active', id);
   res.json({ ok: true });
 });
@@ -520,6 +518,7 @@ router.get('/campaigns/:id/start-summary', requireAuth, (req, res) => {
   if (sendable.some(m => !m.smtp_pass || !m.smtp_host)) warnings.push('Some assigned mailboxes have no SMTP host/password.');
   if (common.getSetting('dry_run', 'true') !== 'false') warnings.push('DRY RUN is on — nothing will actually be sent.');
   if (common.getSetting('global_paused', 'false') === 'true') warnings.push('All outreach is globally paused.');
+  if (common.isYolo()) warnings.push('YOLO mode is on — bounce and inbox placement auto-pauses are off.');
 
   res.json({
     leads, steps: steps.length, mailboxes: sendable.length, assigned_mailboxes: mailboxes.length,
@@ -787,6 +786,14 @@ router.post('/settings/dry-run', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/outreach/settings/yolo — body: { yolo_mode: true|false }
+router.post('/settings/yolo', requireAuth, (req, res) => {
+  if (typeof req.body.yolo_mode !== 'boolean') return res.status(400).json({ error: 'yolo_mode boolean required' });
+  common.setSetting('yolo_mode', req.body.yolo_mode ? 'true' : 'false');
+  common.workerLog('warn', req.body.yolo_mode ? 'YOLO mode turned ON from the UI — bounce and placement auto-pauses off' : 'YOLO mode turned OFF from the UI');
+  res.json({ ok: true });
+});
+
 router.get('/dashboard', requireAuth, (req, res) => {
   const today = toSql(localDayStart());
   const week  = toSql(localWeekStart());
@@ -820,6 +827,7 @@ router.get('/dashboard', requireAuth, (req, res) => {
     settings: {
       global_paused: common.getSetting('global_paused', 'false') === 'true',
       dry_run: common.getSetting('dry_run', 'true') !== 'false',
+      yolo_mode: common.isYolo(),
     },
     kpis,
     mailboxes,
