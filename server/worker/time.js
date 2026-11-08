@@ -1,11 +1,13 @@
 'use strict';
 
-// Send window: Mon–Fri 08:00–17:00 Europe/Vilnius. All DB timestamps are UTC
-// in SQLite's 'YYYY-MM-DD HH:MM:SS' format, matching datetime('now').
+// Campaign send window: configurable (outreach_system_settings send_24_7,
+// send_days, send_start_hour, send_end_hour), Europe/Vilnius. All DB
+// timestamps are UTC in SQLite's 'YYYY-MM-DD HH:MM:SS' format, matching datetime('now').
 
 const TZ = 'Europe/Vilnius';
-const WINDOW_START_HOUR = 8;
-const WINDOW_END_HOUR   = 17;
+
+// Lazy: keeps this module free of a DB dependency at load time
+const currentSchedule = () => require('../services/outreach-common').sendSchedule();
 
 const fmt = new Intl.DateTimeFormat('en-GB', {
   timeZone: TZ, hourCycle: 'h23',
@@ -24,18 +26,21 @@ function localParts(date) {
   };
 }
 
-function inSendWindow(date = new Date()) {
+function inSendWindow(date = new Date(), s = currentSchedule()) {
+  if (s.all) return true;
   const p = localParts(date);
-  return !p.weekend && p.hour >= WINDOW_START_HOUR && p.hour < WINDOW_END_HOUR;
+  const day = (p.weekdayIndex + 1) % 7; // 0 = Sunday
+  return s.days.includes(day) && p.hour >= s.start && p.hour < s.end;
 }
 
 // Earliest moment >= date that falls inside the send window, plus 0–30 min of
-// jitter when it had to be shifted (so follow-ups don't all land at 08:00).
-function nextSendWindow(date) {
-  if (inSendWindow(date)) return date;
-  // Walk forward in 5-minute steps; at most ~3.7 days (Fri 17:00 → Mon 08:00)
+// jitter when it had to be shifted (so follow-ups don't all land at the same
+// minute). With 24/7 sending that is always date itself.
+function nextSendWindow(date, s = currentSchedule()) {
+  if (inSendWindow(date, s)) return date;
+  // Walk forward in 5-minute steps; one allowed day a week is at most ~7 days away
   let t = new Date(Math.ceil(date.getTime() / 300000) * 300000);
-  for (let i = 0; i < 2000 && !inSendWindow(t); i++) t = new Date(t.getTime() + 300000);
+  for (let i = 0; i < 8 * 288 && !inSendWindow(t, s); i++) t = new Date(t.getTime() + 300000);
   return new Date(t.getTime() + Math.floor(Math.random() * 30 * 60000));
 }
 

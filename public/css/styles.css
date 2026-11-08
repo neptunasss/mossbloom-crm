@@ -3543,6 +3543,14 @@ details[open] .todo-completed-summary::before { content: '▼  '; }
 .or-dry-badge { background: var(--yellow-pastel); color: #8a6d00; border: 1px solid rgba(255,214,10,0.7); }
 .or-live-badge { background: var(--green-pastel); color: var(--green-deep); border: 1px solid rgba(52,199,89,0.4); }
 .or-yolo-badge { background: #fff0ef; color: #cc2f26; border: 1px solid rgba(204,47,38,0.4); }
+.or-sched-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 14px 0; }
+.or-sched-body.is-off { opacity: 0.45; }
+.or-sched-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.or-sched-day { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer; user-select: none; }
+.or-sched-day:has(input:checked) { background: var(--bg-hover); border-color: var(--text-secondary); font-weight: 600; }
+.or-sched-hours { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; }
+.or-sched-hours label { display: inline-flex; align-items: center; gap: 6px; }
+.or-sched-foot { gap: 8px; }
 .or-topbar-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .or-pause-btn {
   border: none; border-radius: 10px; cursor: pointer; font-family: inherit;

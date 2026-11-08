@@ -233,7 +233,98 @@ function orRenderDomainHealth(health) {
     <div class="or-dh-grid">${cards}</div>`;
 }
 
+// ── Send schedule ────────────────────────────────────────────────────────────
+
+const OR_DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+const orHour = (h) => `${String(h).padStart(2, '0')}:00`;
+
+function orScheduleLabel(s) {
+  if (!s) return 'the next send window';
+  if (s.all) return '24/7';
+  const key = s.days.join(',');
+  const days = key === '1,2,3,4,5' ? 'Mon–Fri' : s.days.length === 7 ? 'every day'
+    : OR_DAYS.filter(([d]) => s.days.includes(d)).map(([, l]) => l).join(', ');
+  return `${days} ${orHour(s.start)}–${orHour(s.end)} Vilnius`;
+}
+
+// Unsaved edits live in OR.schedDraft so the 30s dashboard refresh keeps them
+function orRenderSchedule() {
+  const saved = OR.schedSaved;
+  const s = OR.schedDraft || saved;
+  const dirty = !!OR.schedDraft;
+  const opts = (from, to, sel) => Array.from({ length: to - from + 1 }, (_, i) => from + i)
+    .map(h => `<option value="${h}" ${h === sel ? 'selected' : ''}>${orHour(h)}</option>`).join('');
+  return `
+    <div class="or-card" id="or-sched-card">
+      <div class="or-card-head">
+        <h3>Send schedule</h3>
+        <span class="or-muted">Now: ${esc(orScheduleLabel(saved))} · campaign emails + follow-ups · warmup keeps 08:00–20:00 daily</span>
+      </div>
+      <label class="or-switch">
+        <input type="checkbox" ${s.all ? 'checked' : ''} onchange="orSchedEdit({ all: this.checked })">
+        <span class="or-switch-track"></span>
+        <span>Send 24/7</span>
+      </label>
+      <div class="or-sched-body ${s.all ? 'is-off' : ''}">
+        <div class="or-sched-days">
+          ${OR_DAYS.map(([d, l]) => `
+            <label class="or-sched-day"><input type="checkbox" ${s.days.includes(d) ? 'checked' : ''} ${s.all ? 'disabled' : ''}
+              onchange="orSchedDay(${d}, this.checked)"><span>${l}</span></label>`).join('')}
+        </div>
+        <div class="or-sched-hours">
+          <label>From <select class="filter-select" ${s.all ? 'disabled' : ''} onchange="orSchedEdit({ start: +this.value })">${opts(0, 23, s.start)}</select></label>
+          <label>to <select class="filter-select" ${s.all ? 'disabled' : ''} onchange="orSchedEdit({ end: +this.value })">${opts(1, 24, s.end)}</select></label>
+          <span class="or-muted">Europe/Vilnius</span>
+        </div>
+      </div>
+      <div class="or-card-foot or-sched-foot">
+        ${dirty ? '<button class="btn-secondary" onclick="orSchedCancel()">Cancel</button>' : ''}
+        <button class="btn-primary" ${dirty ? '' : 'disabled'} onclick="orSchedSave()">Save schedule</button>
+      </div>
+    </div>`;
+}
+
+function orSchedRerender() {
+  const card = document.getElementById('or-sched-card');
+  if (card) card.outerHTML = orRenderSchedule();
+}
+
+function orSchedEdit(change) {
+  const base = OR.schedDraft || OR.schedSaved;
+  OR.schedDraft = { ...base, days: [...base.days], ...change };
+  orSchedRerender();
+}
+
+function orSchedDay(day, on) {
+  const days = (OR.schedDraft || OR.schedSaved).days.filter(d => d !== day);
+  if (on) days.push(day);
+  orSchedEdit({ days });
+}
+
+function orSchedCancel() {
+  OR.schedDraft = null;
+  orSchedRerender();
+}
+
+async function orSchedSave() {
+  const s = OR.schedDraft;
+  if (!s) return;
+  if (!s.days.length) return toast('Pick at least one day', 'error');
+  if (s.start >= s.end) return toast('Start hour must be before end hour', 'error');
+  try {
+    const r = await api('/api/outreach/settings/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ send_24_7: s.all, send_days: s.days, send_start_hour: s.start, send_end_hour: s.end }),
+    });
+    OR.schedSaved = r.send_schedule;
+    OR.schedDraft = null;
+    toast(`Send schedule saved: ${orScheduleLabel(r.send_schedule)}`);
+    orLoadDashboard(true);
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
 function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
+  OR.schedSaved = settings.send_schedule;
   const paused = settings.global_paused;
   const dry = settings.dry_run;
   const yolo = settings.yolo_mode;
@@ -285,7 +376,7 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
         <span class="or-state-dot"></span>
         <div>
           <div class="or-state-title">${paused ? 'All outreach is PAUSED' : 'Outreach is running'}</div>
-          <div class="or-state-sub">${paused ? 'The worker sends nothing until you resume.' : `${kpis.pending} email(s) queued · weekdays 08:00–17:00 Vilnius`}</div>
+          <div class="or-state-sub">${paused ? 'The worker sends nothing until you resume.' : `${kpis.pending} email(s) queued · sends ${esc(orScheduleLabel(settings.send_schedule))}`}</div>
         </div>
         ${dry ? '<span class="or-dry-badge" title="The worker logs what it would send but sends nothing">DRY RUN</span>' : '<span class="or-live-badge">LIVE</span>'}
         ${yolo ? '<span class="or-yolo-badge" title="Bounce and inbox placement auto-pauses are off">YOLO</span>' : ''}
@@ -316,6 +407,8 @@ function orRenderDashboard({ settings, kpis, mailboxes }, log, health) {
       ${kpi('Bounce rate', `${kpis.bounce_rate}%`, yolo ? 'auto-pause off (YOLO)' : 'auto-pause above 3%', bounceTone)}
       ${kpi('Unsubscribes', kpis.unsubscribes)}
     </div>
+
+    ${orRenderSchedule()}
 
     ${orRenderDomainHealth(health)}
 
@@ -356,7 +449,7 @@ async function orToggleDryRun(input) {
   if (!wantDry) {
     const ok = await orConfirm('Turn off dry run?', `
       <p class="or-confirm-lead">The worker will start <strong>sending real emails</strong> in the next send window
-      (weekdays 08:00–17:00 Vilnius).</p>
+      (${esc(orScheduleLabel(OR.schedSaved))}).</p>
       <ul class="or-confirm-list">
         <li>Check that every mailbox passes <em>Test SMTP</em> and <em>Test IMAP</em>.</li>
         <li>Check the dry-run previews in the worker log look right.</li>
@@ -1348,7 +1441,7 @@ function orRenderSteps() {
         </div>
         ${i > 0 ? `<div class="form-group or-delay"><label>Wait</label>
           <input type="number" min="0" value="${s.delay_days || 0}" oninput="OR.steps[${i}].delay_days=parseInt(this.value,10)||0">
-          <span class="or-muted">days after step ${i} (shifted into the next weekday 08:00–17:00 window)</span></div>` : ''}
+          <span class="or-muted">days after step ${i} (shifted into the next allowed send slot — see Send schedule on the dashboard)</span></div>` : ''}
         ${i === 0 ? `<div class="form-group"><label>Subject</label>
           <input value="${esc(s.subject || '')}" oninput="OR.steps[${i}].subject=this.value" onfocus="OR.lastFocus={i:${i},f:'subject',el:this}"></div>`
           : `<div class="or-muted or-thread-note">Subject: “Re: ${esc(OR.steps[0].subject || '…')}”</div>`}

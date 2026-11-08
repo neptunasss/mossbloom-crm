@@ -499,17 +499,20 @@ router.get('/campaigns/:id/start-summary', requireAuth, (req, res) => {
   `).all(id);
   const sendable = mailboxes.filter(m => ['active', 'warmup'].includes(m.status));
 
-  // Daily capacity: mailbox caps, then campaign + system caps (9 sending hours/day)
+  // Daily capacity: mailbox caps, then campaign + system caps over the send window
+  const sched = common.sendSchedule();
+  const hoursPerDay = sched.all ? 24 : sched.end - sched.start;
+  const daysPerWeek = sched.all ? 7 : sched.days.length;
   let perDay = sendable.reduce((sum, m) => sum + (effectiveLimit(m) || 0), 0);
   if (campaign.daily_limit) perDay = Math.min(perDay, campaign.daily_limit);
   const systemHourly = parseInt(common.getSetting('hourly_system_limit', '50'), 10) || 0;
-  perDay = Math.min(perDay, systemHourly * 9);
+  perDay = Math.min(perDay, systemHourly * hoursPerDay);
 
   const totalEmails = leads * steps.length;
   const delayDays = steps.slice(1).reduce((sum, s) => sum + (s.delay_days || 0), 0);
-  const sendingWorkdays = perDay > 0 ? Math.ceil(totalEmails / perDay) : null;
-  // Workdays → calendar days (5 of 7), plus the follow-up delays for the last batch
-  const estimatedDays = sendingWorkdays === null ? null : Math.ceil(sendingWorkdays * 7 / 5) + delayDays;
+  const sendingDays = perDay > 0 ? Math.ceil(totalEmails / perDay) : null;
+  // Sending days → calendar days, plus the follow-up delays for the last batch
+  const estimatedDays = sendingDays === null ? null : Math.ceil(sendingDays * 7 / daysPerWeek) + delayDays;
 
   const warnings = [];
   if (!steps.length) warnings.push('Campaign has no sequence steps.');
@@ -794,6 +797,26 @@ router.post('/settings/yolo', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/outreach/settings/schedule
+// body: { send_24_7: bool, send_days: [0–6], send_start_hour: 0–23, send_end_hour: 1–24 }
+router.post('/settings/schedule', requireAuth, (req, res) => {
+  const { send_24_7: all, send_days: days, send_start_hour: start, send_end_hour: end } = req.body;
+  if (typeof all !== 'boolean') return res.status(400).json({ error: 'send_24_7 boolean required' });
+  if (!Array.isArray(days) || !days.length || !days.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
+    return res.status(400).json({ error: 'send_days must list at least one day (0 = Sunday … 6 = Saturday)' });
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 24 || start >= end) {
+    return res.status(400).json({ error: 'start hour must be before end hour (0–24)' });
+  }
+  const sorted = [...new Set(days)].sort((a, b) => a - b);
+  common.setSetting('send_24_7', all ? 'true' : 'false');
+  common.setSetting('send_days', sorted.join(','));
+  common.setSetting('send_start_hour', start);
+  common.setSetting('send_end_hour', end);
+  common.workerLog('info', `send schedule changed from the UI: ${all ? '24/7' : `days ${sorted.join(',')} ${start}:00–${end}:00 Vilnius`}`);
+  res.json({ ok: true, send_schedule: common.sendSchedule() });
+});
+
 router.get('/dashboard', requireAuth, (req, res) => {
   const today = toSql(localDayStart());
   const week  = toSql(localWeekStart());
@@ -828,6 +851,7 @@ router.get('/dashboard', requireAuth, (req, res) => {
       global_paused: common.getSetting('global_paused', 'false') === 'true',
       dry_run: common.getSetting('dry_run', 'true') !== 'false',
       yolo_mode: common.isYolo(),
+      send_schedule: common.sendSchedule(),
     },
     kpis,
     mailboxes,

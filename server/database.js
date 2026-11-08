@@ -524,6 +524,11 @@ try {
   // this is switched to 'false' manually.
   osi.run('dry_run', 'true');
   osi.run('yolo_mode', 'false');
+  // Campaign send window (Europe/Vilnius); days 0 = Sunday … 6 = Saturday
+  osi.run('send_24_7', 'false');
+  osi.run('send_days', '1,2,3,4,5');
+  osi.run('send_start_hour', '8');
+  osi.run('send_end_hour', '17');
 } catch {}
 
 // Outreach worker columns/tables

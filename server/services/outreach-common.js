@@ -136,6 +136,22 @@ function isYolo() {
   return getSetting('yolo_mode', 'false') === 'true';
 }
 
+// Campaign send window. Bad or empty stored values fall back to Mon–Fri 08–17,
+// so a broken setting can never leave a window that never opens.
+const DEFAULT_SCHEDULE = { days: [1, 2, 3, 4, 5], start: 8, end: 17 };
+
+function sendSchedule() {
+  const days = [...new Set(String(getSetting('send_days', '1,2,3,4,5')).split(',')
+    .map(s => s.trim()).filter(s => /^[0-6]$/.test(s)).map(Number))].sort((a, b) => a - b);
+  const start = parseInt(getSetting('send_start_hour', '8'), 10);
+  const end = parseInt(getSetting('send_end_hour', '17'), 10);
+  const valid = days.length > 0 && start >= 0 && end <= 24 && start < end;
+  return {
+    all: getSetting('send_24_7', 'false') === 'true',
+    ...(valid ? { days, start, end } : DEFAULT_SCHEDULE),
+  };
+}
+
 // Today's campaign send cap for a mailbox (worker + dashboard)
 function effectiveDailyLimit(mb) {
   if (mb.warmup_mode && !isYolo()) return mb.warmup_daily_limit ?? mb.warmup_start_limit;
@@ -237,7 +253,7 @@ module.exports = {
   testSmtpLogin, testImapLogin,
   encrypt, decrypt, isEncrypted, encryptExistingMailboxPasswords,
   signLeadToken, verifyLeadToken, publicBaseUrl,
-  getSetting, setSetting, workerLog, isYolo, effectiveDailyLimit,
+  getSetting, setSetting, workerLog, isYolo, effectiveDailyLimit, sendSchedule,
   render, htmlToText, escapeHtml,
   cancelLeadQueue, stopLead,
 };
